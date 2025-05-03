@@ -22,10 +22,11 @@ app = create_app(config[env])
 @app.route('/')
 def index():
     return """
-    <h1>Research Paper Podcast Generator</h1>
-    <p>Welcome to the Research Paper Podcast Generator.</p>
+    <h1>Fionntan</h1>
+    <p>Welcome to the Fionntan.</p>
     <a href="/auth/login">Login with Google</a>
     """
 
 if __name__ == '__main__':
     app.run(debug=app.config['DEBUG'])
+    

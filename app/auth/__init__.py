@@ -1,5 +1,5 @@
 """
-Google OAuth Authentication Module for Research Paper Podcast Generator
+Google OAuth Authentication Module for Fionntan
 
 This module provides a complete Google OAuth 2.0 implementation for the application,
 including user management, token handling, and secure API endpoints.
@@ -18,7 +18,8 @@ oauth = OAuth()
 
 def create_app(config=None):
     """Create and configure the Flask application."""
-    app = Flask(__name__)
+    app = Flask(__name__, 
+                template_folder='../templates')
     
     # Load default configuration
     app.config.from_mapping(
@@ -35,7 +36,11 @@ def create_app(config=None):
     
     # Override config if provided
     if config:
-        app.config.from_mapping(config)
+        # If it's a class, use from_object, otherwise use from_mapping
+        if isinstance(config, type):
+            app.config.from_object(config)
+        else:
+            app.config.from_mapping(config)
     
     # Initialize extensions with app
     db.init_app(app)

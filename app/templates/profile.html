@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - Research Paper Podcast</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .profile-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .profile-image {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin-right: 20px;
+            object-fit: cover;
+            border: 3px solid #e0e0e0;
+        }
+        .profile-info h1 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .profile-info p {
+            margin: 0;
+            color: #7f8c8d;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #3498db;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .preferences {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .preferences ul {
+            padding-left: 20px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn.secondary {
+            background-color: #95a5a6;
+        }
+        .btn.secondary:hover {
+            background-color: #7f8c8d;
+        }
+        .btn-group {
+            margin-top: 20px;
+        }
+        .btn-group .btn {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="profile-header">
+            {% if user.profile_pic %}
+            <img class="profile-image" src="{{ user.profile_pic }}" alt="{{ user.name }}">
+            {% else %}
+            <img class="profile-image" src="https://via.placeholder.com/100" alt="Profile Placeholder">
+            {% endif %}
+            <div class="profile-info">
+                <h1>{{ user.name }}</h1>
+                <p>{{ user.email }}</p>
+                <p>Member since: {{ user.created_at.strftime('%B %d, %Y') }}</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Research Preferences</h2>
+            <div class="preferences">
+                <h3>Topics of Interest</h3>
+                <ul>
+                    {% if user.research_preferences.topics %}
+                        {% for topic in user.research_preferences.topics %}
+                            <li>{{ topic }}</li>
+                        {% endfor %}
+                    {% else %}
+                        <li><em>No topics specified</em></li>
+                    {% endif %}
+                </ul>
+
+                <h3>Categories</h3>
+                <ul>
+                    {% if user.research_preferences.categories %}
+                        {% for category in user.research_preferences.categories %}
+                            <li>{{ category }}</li>
+                        {% endfor %}
+                    {% else %}
+                        <li><em>No categories specified</em></li>
+                    {% endif %}
+                </ul>
+
+                <h3>Favorite Researchers</h3>
+                <ul>
+                    {% if user.research_preferences.authors %}
+                        {% for author in user.research_preferences.authors %}
+                            <li>{{ author }}</li>
+                        {% endfor %}
+                    {% else %}
+                        <li><em>No researchers specified</em></li>
+                    {% endif %}
+                </ul>
+
+                <h3>Other Settings</h3>
+                <p>Maximum results: {{ user.research_preferences.max_results }}</p>
+                <p>Days back: {{ user.research_preferences.days_back }}</p>
+                <p>Sort by: {{ user.research_preferences.sort_by }}</p>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <a href="/profile/edit" class="btn">Edit Preferences</a>
+            <a href="/auth/logout" class="btn secondary">Logout</a>
+        </div>
+    </div>
+</body>
+</html>
