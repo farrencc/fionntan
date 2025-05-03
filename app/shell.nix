@@ -15,6 +15,10 @@ pkgs.mkShell {
     postgresql
     sqlite
     
+    # Audio processing dependencies
+    ffmpeg
+    sox
+    
     # C++ dependencies for Google Cloud libraries
     stdenv.cc.cc.lib
     

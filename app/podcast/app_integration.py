@@ -56,10 +56,12 @@ def register_podcast_blueprint(app: Flask) -> None:
     """
     # Import here to avoid circular imports
     from podcast_api import podcast_bp
+    from audio_api import audio_bp
     
-    # Register blueprint
+    # Register blueprints
     app.register_blueprint(podcast_bp)
-    logger.info("Podcast blueprint registered")
+    app.register_blueprint(audio_bp)
+    logger.info("Podcast and audio blueprints registered")
 
 
 def setup_podcast_generator(app: Flask, config: Dict[str, Any] = None) -> None:
