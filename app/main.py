@@ -6,6 +6,7 @@ Initializes and runs the Flask application with Google OAuth support.
 
 import os
 from dotenv import load_dotenv
+from podcast.app_integration import setup_podcast_generator
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,4 +30,9 @@ def index():
 
 if __name__ == '__main__':
     app.run(debug=app.config['DEBUG'])
+    
+    # Set up podcast generator
+    setup_podcast_generator(app, {
+        'GOOGLE_APPLICATION_CREDENTIALS': 'path/to/your/credentials.json'
+    })
     

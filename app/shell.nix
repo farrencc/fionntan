@@ -2,7 +2,6 @@
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
-    # Use the default Python - no specific version
     python3
     python3Packages.pip
     python3Packages.virtualenv
@@ -15,6 +14,9 @@ pkgs.mkShell {
     libxslt
     postgresql
     sqlite
+    
+    # C++ dependencies for Google Cloud libraries
+    stdenv.cc.cc.lib
     
     # Development tools
     gnumake
@@ -44,8 +46,8 @@ pkgs.mkShell {
     export FLASK_ENV=development
     export PYTHONPATH=$PWD:$PYTHONPATH
     
-    # Make system libraries available
-    export LD_LIBRARY_PATH=${pkgs.sqlite.out}/lib:$LD_LIBRARY_PATH
+    # Explicitly set library path for C++ libraries
+    export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH
     
     echo "Fionntan - NixOS Development Environment"
     echo "Run 'python main.py' to start the application"
