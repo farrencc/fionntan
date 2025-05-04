@@ -1,0 +1,102 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/podcast_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-key.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - uploads:/app/uploads
+    depends_on:
+      - db
+      - redis
+    networks:
+      - podcast-network
+
+  worker:
+    build: .
+    command: celery -A app.celery worker --loglevel=info --concurrency=2
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/podcast_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-key.json
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - uploads:/app/uploads
+    depends_on:
+      - db
+      - redis
+    networks:
+      - podcast-network
+
+  beat:
+    build: .
+    command: celery -A app.celery beat --loglevel=info
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/podcast_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    networks:
+      - podcast-network
+
+  flower:
+    build: .
+    command: celery -A app.celery flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+    networks:
+      - podcast-network
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=podcast_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - podcast-network
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - podcast-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:
+
+networks:
+  podcast-network:
+    driver: bridge
