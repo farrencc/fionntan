@@ -75,3 +75,4 @@ coverage.xml
 .tmp/
 tmp/
 .cache/
+node_modules

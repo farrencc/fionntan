@@ -5,6 +5,8 @@ pkgs.mkShell {
     python3
     python3Packages.pip
     python3Packages.virtualenv
+    nodejs
+    nodePackages.npm
     
     # System dependencies that might be needed by Python packages
     openssl

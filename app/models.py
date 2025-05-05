@@ -1,7 +1,7 @@
 # app/models.py
 
 from datetime import datetime
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY
 from . import db
 
 class User(db.Model):
@@ -15,7 +15,7 @@ class User(db.Model):
     google_id = db.Column(db.String(64), unique=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
-    tokens = db.Column(JSONB)
+    tokens = db.Column(db.JSON)
     token_expiry = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True)
     role = db.Column(db.String(50), default='user')
@@ -42,18 +42,43 @@ class UserPreference(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'))
-    topics = db.Column(ARRAY(db.String), default=list)
-    categories = db.Column(ARRAY(db.String), default=list)
-    authors = db.Column(ARRAY(db.String), default=list)
     max_results = db.Column(db.Integer, default=50)
     days_back = db.Column(db.Integer, default=30)
     sort_by = db.Column(db.String(50), default='relevance')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    _topics = db.Column('topics', db.JSON, default=list)
+    _categories = db.Column('categories', db.JSON, default=list)
+    _authors = db.Column('authors', db.JSON, default=list)
+    
+    # Add properties for easy access
+    @property
+    def topics(self):
+        return self._topics if self._topics is not None else []
+    
+    @topics.setter
+    def topics(self, value):
+        self._topics = value
+    
+    @property
+    def categories(self):
+        return self._categories if self._categories is not None else []
+    
+    @categories.setter
+    def categories(self, value):
+        self._categories = value
+    
+    @property
+    def authors(self):
+        return self._authors if self._authors is not None else []
+    
+    @authors.setter
+    def authors(self, value):
+        self._authors = value
     
     def to_dict(self):
         """Convert preferences to dictionary."""
         return {
-            'topics': self.topics,
+            'topics': self.topics,      # Now uses the property
             'categories': self.categories,
             'authors': self.authors,
             'max_results': self.max_results,
@@ -81,7 +106,7 @@ class Podcast(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     error_message = db.Column(db.Text)
-    extra_data = db.Column(JSONB)
+    extra_data = db.Column(db.JSON)
     
     # Relationships
     script = db.relationship('PodcastScript', backref='podcast', uselist=False, cascade='all, delete-orphan')
@@ -110,9 +135,17 @@ class PodcastScript(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     podcast_id = db.Column(db.Integer, db.ForeignKey('podcasts.id', ondelete='CASCADE'))
-    script_content = db.Column(JSONB, nullable=False)
-    paper_ids = db.Column(ARRAY(db.String), nullable=False)
+    script_content = db.Column(db.JSON, nullable=False)
     generated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    _paper_ids = db.Column('paper_ids', db.JSON, nullable=False)
+    
+    @property
+    def paper_ids(self):
+        return self._paper_ids if self._paper_ids is not None else []
+    
+    @paper_ids.setter
+    def paper_ids(self, value):
+        self._paper_ids = value
     
     def to_dict(self):
         """Convert script to dictionary."""
@@ -133,7 +166,7 @@ class PodcastAudio(db.Model):
     file_size = db.Column(db.Integer)
     duration = db.Column(db.Integer)  # in seconds
     audio_format = db.Column(db.String(50))
-    voice_config = db.Column(JSONB)
+    voice_config = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def to_dict(self):
@@ -173,7 +206,7 @@ class GenerationTask(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     started_at = db.Column(db.DateTime)
     completed_at = db.Column(db.DateTime)
-    task_data = db.Column(JSONB)
+    task_data = db.Column(db.JSON)
     
     def to_dict(self):
         """Convert task to dictionary."""
