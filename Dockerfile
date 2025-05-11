@@ -15,12 +15,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libffi-dev \
     libssl-dev \
-    python3-pip \
     && rm -rf /var/lib/apt/lists/*
-
-# Create and activate virtual environment
-RUN python3 -m venv venv
-ENV PATH="/app/venv/bin:$PATH"
 
 # Copy requirements from app directory
 COPY app/requirements.txt .
