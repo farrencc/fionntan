@@ -18,26 +18,19 @@ class Config:
     # Google OAuth
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-    GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/api/v1/auth/callback')
+    GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:3000/auth/callback')
+    GOOGLE_DISCOVERY_URL = 'https://accounts.google.com/.well-known/openid-configuration'
     
-    # Google Cloud
-    GOOGLE_APPLICATION_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-    GCP_PROJECT_ID = os.environ.get('GCP_PROJECT_ID')
-    GCS_BUCKET_NAME = os.environ.get('GCS_BUCKET_NAME', 'podcast-audio-storage')
+    # CORS settings
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    CORS_SUPPORTS_CREDENTIALS = True
     
-    # Celery
-    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
-    
-    # Rate limiting
-    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-    RATELIMIT_DEFAULT = "100 per hour"
-    
-    # CORS
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
-    
-    # File upload
-    MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
+    # Session configuration
+    SESSION_TYPE = 'filesystem'
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    PERMANENT_SESSION_LIFETIME = timedelta(days=7)
     
     @staticmethod
     def init_app(app):
@@ -48,25 +41,12 @@ class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'data-dev.sqlite')
-    
-    # Disable rate limiting in development
-    RATELIMIT_ENABLED = False
+    SESSION_COOKIE_SECURE = False
 
 class ProductionConfig(Config):
     """Production configuration."""
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'postgresql://user:password@localhost/podcast_db'
-    
-    @classmethod
-    def init_app(cls, app):
-        Config.init_app(app)
-        
-        # Log to syslog
-        import logging
-        from logging.handlers import SysLogHandler
-        syslog_handler = SysLogHandler()
-        syslog_handler.setLevel(logging.WARNING)
-        app.logger.addHandler(syslog_handler)
 
 class TestingConfig(Config):
     """Testing configuration."""
