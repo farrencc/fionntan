@@ -20,13 +20,7 @@ Initializes and runs the Flask application with Google OAuth support.
 # app = create_app(config[env])
 
 # # Add a simple index route
-# @app.route('/')
-# def index():
-#     return """
-#     <h1>Fionntan</h1>
-#     <p>Welcome to the Fionntan.</p>
-#     <a href="/auth/login">Login with Google</a>
-#     """
+
 
 # if __name__ == '__main__':
 #     app.run(debug=app.config['DEBUG'])
@@ -45,6 +39,14 @@ from app.models import User, UserPreference, Podcast, PodcastScript, PodcastAudi
 
 # Create Flask application
 app = create_app(os.getenv('FLASK_ENV', 'development'))
+
+# @app.route('/')
+# def index():
+#     return """
+#     <h1>Fionntan</h1>
+#     <p>Welcome to the Fionntan.</p>
+#     <a href="/auth/login">Login with Google</a>
+#     """
 
 # Create CLI context
 @app.shell_context_processor
