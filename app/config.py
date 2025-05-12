@@ -38,6 +38,12 @@ class Config:
     
     # File upload
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
+
+    # Session configuration
+    SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_PERMANENT = False
     
     @staticmethod
     def init_app(app):

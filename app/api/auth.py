@@ -21,6 +21,9 @@ def login():
     except Exception as e:
         current_app.logger.error(f"OAuth login error: {str(e)}")
         return error_response(500, "Failed to initiate OAuth login")
+        
+        
+@auth_bp.route('/callback', methods=['GET'])
 
 @auth_bp.route('/callback', methods=['GET'])
 def callback():
@@ -29,9 +32,7 @@ def callback():
         oauth_client = oauth.create_client('google')
         token = oauth_client.authorize_access_token()
         
-        # Get user info from Google
-        userinfo_endpoint = oauth_client.token['userinfo_endpoint']
-        resp = oauth_client.get(userinfo_endpoint)
+        resp = oauth_client.get('https://openidconnect.googleapis.com/v1/userinfo', token=token)
         user_info = resp.json()
         
         # Find or create user
@@ -46,7 +47,6 @@ def callback():
             )
             db.session.add(user)
         else:
-            # Update user info
             user.name = user_info.get('name', user.name)
             user.email = user_info.get('email', user.email)
             user.profile_pic = user_info.get('picture', user.profile_pic)
@@ -58,19 +58,17 @@ def callback():
         access_token = create_access_token(identity=user.id)
         refresh_token = create_refresh_token(identity=user.id)
         
-        # Return tokens and user info
-        return jsonify({
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'user': user.to_dict()
-        })
+        # IMPORTANT: Store in session and redirect (don't return JSON)
+        session['access_token'] = access_token
+        session['refresh_token'] = refresh_token
+        session['user_id'] = user.id
         
-    except OAuthError as e:
-        current_app.logger.error(f"OAuth callback error: {str(e)}")
-        return error_response(401, "Authentication failed")
+        # Redirect to React app - change this to your actual React port
+        return redirect('http://localhost:5001/auth/success')
+        
     except Exception as e:
-        current_app.logger.error(f"Unexpected error in callback: {str(e)}")
-        return error_response(500, "Internal server error")
+        current_app.logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
+        return redirect('http://localhost:5001/auth/error')
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
@@ -83,6 +81,29 @@ def refresh():
     except Exception as e:
         current_app.logger.error(f"Token refresh error: {str(e)}")
         return error_response(401, "Failed to refresh token")
+
+
+@auth_bp.route('/session/tokens', methods=['GET'])
+def get_session_tokens():
+    """Get tokens from session."""
+    current_app.logger.info(f"Session tokens requested")
+    
+    access_token = session.get('access_token')
+    refresh_token = session.get('refresh_token')
+    
+    if access_token:
+        # Clear tokens from session after retrieval
+        session.pop('access_token', None)
+        session.pop('refresh_token', None)
+        
+        return jsonify({
+            'access_token': access_token,
+            'refresh_token': refresh_token
+        })
+    else:
+        current_app.logger.error("No tokens found in session")
+        return error_response(401, "No tokens found")
+        
 
 @auth_bp.route('/logout', methods=['POST'])
 @jwt_required()
