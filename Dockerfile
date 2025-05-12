@@ -1,4 +1,3 @@
-# Dockerfile (in root directory)
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -17,27 +16,25 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements from app directory
-COPY app/requirements.txt .
+# Create user early and set up directory structure
+RUN useradd -m -r appuser
+RUN mkdir -p /app/logs /app/uploads && \
+    chown -R appuser:appuser /app
+
+# Copy requirements first (for better caching)
+COPY --chown=appuser:appuser app/requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy entire application code  
-COPY . .
+# Copy application code
+COPY --chown=appuser:appuser ./app ./app
+COPY --chown=appuser:appuser main.py .
 
-# Create directories
-RUN mkdir -p /app/logs /app/uploads
-
-# Create non-root user
-RUN useradd -m -r appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 5000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/api/v1/health || exit 1
 
-# Start command
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "main:app"]
