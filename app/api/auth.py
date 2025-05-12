@@ -1,6 +1,6 @@
 # app/api/auth.py
 
-from flask import Blueprint, request, jsonify, current_app, redirect, url_for
+from flask import Blueprint, request, jsonify, current_app, redirect, url_for, session
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from authlib.integrations.base_client.errors import OAuthError
 from datetime import datetime
@@ -21,9 +21,6 @@ def login():
     except Exception as e:
         current_app.logger.error(f"OAuth login error: {str(e)}")
         return error_response(500, "Failed to initiate OAuth login")
-        
-        
-@auth_bp.route('/callback', methods=['GET'])
 
 @auth_bp.route('/callback', methods=['GET'])
 def callback():
@@ -58,30 +55,17 @@ def callback():
         access_token = create_access_token(identity=user.id)
         refresh_token = create_refresh_token(identity=user.id)
         
-        # IMPORTANT: Store in session and redirect (don't return JSON)
+        # Store in session
         session['access_token'] = access_token
         session['refresh_token'] = refresh_token
         session['user_id'] = user.id
         
-        # Redirect to React app - change this to your actual React port
+        # Redirect to React app on port 5001
         return redirect('http://localhost:5001/auth/success')
         
     except Exception as e:
         current_app.logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
         return redirect('http://localhost:5001/auth/error')
-
-@auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
-def refresh():
-    """Refresh JWT token."""
-    try:
-        current_user = get_jwt_identity()
-        access_token = create_access_token(identity=current_user)
-        return jsonify({'access_token': access_token})
-    except Exception as e:
-        current_app.logger.error(f"Token refresh error: {str(e)}")
-        return error_response(401, "Failed to refresh token")
-
 
 @auth_bp.route('/session/tokens', methods=['GET'])
 def get_session_tokens():
@@ -103,12 +87,21 @@ def get_session_tokens():
     else:
         current_app.logger.error("No tokens found in session")
         return error_response(401, "No tokens found")
-        
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    """Refresh JWT token."""
+    try:
+        current_user = get_jwt_identity()
+        access_token = create_access_token(identity=current_user)
+        return jsonify({'access_token': access_token})
+    except Exception as e:
+        current_app.logger.error(f"Token refresh error: {str(e)}")
+        return error_response(401, "Failed to refresh token")
 
 @auth_bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
     """Logout user (invalidate JWT token)."""
-    # In a production system, you would want to maintain a blacklist of tokens
-    # or use Redis/database to track active sessions
     return jsonify({'message': 'Successfully logged out'})

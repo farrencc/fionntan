@@ -9,7 +9,7 @@ load_dotenv(os.path.join(basedir, '.env'))
 
 class Config:
     """Base configuration."""
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or '1aadb9d7c71e3fe371a7cee85fd2a08aa009acc9f88000fea04c01a6716dd75d'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or SECRET_KEY
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)

@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { CircularProgress, Box } from '@mui/material';
 import axios from 'axios';
 
+const API_BASE_URL = 'http://localhost:5000';
+
 const AuthCallback = () => {
   const navigate = useNavigate();
   const { setUser } = useAuth();
@@ -15,8 +17,8 @@ const AuthCallback = () => {
         console.log('AuthCallback: Starting...');
         
         // Get tokens from session with credentials
-        const response = await axios.get('http://localhost:5000/api/v1/auth/session/tokens', {
-          withCredentials: true  // This is crucial for session cookies
+        const response = await axios.get(`${API_BASE_URL}/api/v1/auth/session/tokens`, {
+          withCredentials: true
         });
         
         const { access_token, refresh_token } = response.data;
@@ -29,14 +31,19 @@ const AuthCallback = () => {
         axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
         
         // Get user info
-        const userResponse = await axios.get('http://localhost:5000/api/v1/users/me');
-        setUser(userResponse.data);
+        const userResponse = await axios.get(`${API_BASE_URL}/api/v1/users/me`);
+        
+        // Set user in context
+        if (setUser && typeof setUser === 'function') {
+          setUser(userResponse.data);
+        }
         
         // Redirect to dashboard
         navigate('/dashboard');
       } catch (error) {
         console.error('AuthCallback: Error:', error);
-        navigate('/login');
+        console.error('Error details:', error.response?.data);
+        navigate('/auth/error');  // Redirect to error page instead of login
       }
     };
 

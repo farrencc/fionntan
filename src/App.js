@@ -10,6 +10,7 @@ import PodcastDetail from './pages/PodcastDetail';
 import CreatePodcast from './pages/CreatePodcast';
 import PrivateRoute from './components/Auth/PrivateRoute';
 import AuthCallback from './pages/AuthCallback';
+import AuthError from './pages/AuthError';  // Add this import
 
 function App() {
   return (
@@ -17,6 +18,8 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/auth/success" element={<AuthCallback />} />
+      <Route path="/auth/error" element={<AuthError />} />  {/* Add this route */}
+      
       <Route
         path="/"
         element={
@@ -25,14 +28,15 @@ function App() {
           </PrivateRoute>
         }
       >
-    <Route index element={<Navigate to="/dashboard" replace />} />
-    <Route path="dashboard" element={<Dashboard />} />
-    <Route path="preferences" element={<Preferences />} />
-    <Route path="podcasts" element={<Podcasts />} />
-    <Route path="podcasts/" element={<PodcastDetail />} />
-    <Route path="create" element={<CreatePodcast />} />
-    </Route>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="preferences" element={<Preferences />} />
+        <Route path="podcasts" element={<Podcasts />} />
+        <Route path="podcasts/:id" element={<PodcastDetail />} />
+        <Route path="create" element={<CreatePodcast />} />
+      </Route>
     </Routes>
-);
+  );
 }
+
 export default App;
