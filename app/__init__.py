@@ -40,12 +40,13 @@ def create_app(config_name='development'):
     celery.conf.update(app.config)
     celery.Task = make_celery(app)
     
-    # Configure CORS
+    # Configure CORS with credentials support
     CORS(app, resources={
         r"/api/*": {
-            "origins": app.config['CORS_ORIGINS'],
+            "origins": ["http://localhost:3000", "http://localhost:5001"],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True  # Important for session cookies
         }
     })
     
@@ -97,13 +98,9 @@ def register_oauth_providers(app):
         name='google',
         client_id=app.config['GOOGLE_CLIENT_ID'],
         client_secret=app.config['GOOGLE_CLIENT_SECRET'],
-        access_token_url='https://accounts.google.com/o/oauth2/token',
-        access_token_params=None,
-        authorize_url='https://accounts.google.com/o/oauth2/auth',
-        authorize_params=None,
-        api_base_url='https://www.googleapis.com/oauth2/v1/',
-        userinfo_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
-        client_kwargs={'scope': 'openid email profile'},
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={
+            'scope': 'openid email profile'},
     )
 
 def register_blueprints(app):
