@@ -103,7 +103,8 @@ class ArxivService:
         """Process ArXiv paper result into dictionary."""
         try:
             return {
-                "id": paper.entry_id.split("/")[-1],
+                #"id": paper.entry_id.split("/")[-1],
+                "id": paper.get_short_id(),
                 "title": paper.title,
                 "authors": [author.name for author in paper.authors],
                 "abstract": paper.summary,
