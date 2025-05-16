@@ -1,5 +1,7 @@
 # app/services/arxiv_service.py
 
+import time
+import random
 import arxiv
 import logging
 from datetime import datetime, timedelta
@@ -100,13 +102,22 @@ class ArxivService:
             raise
     
     def _process_paper(self, paper) -> Dict[str, Any]:
-        """Process ArXiv paper result into dictionary."""
+        print(f"DEBUG: _process_paper received paper object: {type(paper)}")
+        if hasattr(paper, 'authors'):
+            print(f"DEBUG: paper.authors type: {type(paper.authors)}")
+            if paper.authors:
+                print(f"DEBUG: first author type: {type(paper.authors[0])}")
+                print(f"DEBUG: first author.name type: {type(paper.authors[0].name)}")
+                print(f"DEBUG: first author.name value: {paper.authors[0].name}")
+
+        # ... your try/except block ...
         try:
+            authors_list = [author.name for author in paper.authors]
+            print(f"DEBUG: Extracted authors_list: {authors_list}") # See what this prints
             return {
-                #"id": paper.entry_id.split("/")[-1],
                 "id": paper.get_short_id(),
                 "title": paper.title,
-                "authors": [author.name for author in paper.authors],
+                "authors": authors_list, # Use the debugged list
                 "abstract": paper.summary,
                 "pdf_url": paper.pdf_url,
                 "categories": paper.categories,
