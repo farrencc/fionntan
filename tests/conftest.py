@@ -1,11 +1,20 @@
 # tests/conftest.py
 
-import pytest
+import sys
 import os
-from datetime import datetime
 
-from app import create_app, db
-from app.models import User, UserPreference
+# Add the project root directory (parent of 'tests') to sys.path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# NOW, the rest of your conftest.py imports and code
+import pytest
+from datetime import datetime # This was in your original conftest.py
+# ... other standard imports for conftest ...
+
+from app import create_app, db # This should now reliably find 'app'
+from app.models import User, UserPreference # And this
 
 @pytest.fixture(scope='session')
 def app():
