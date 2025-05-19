@@ -10,6 +10,11 @@ PROJECT_ROOT=$(pwd)
 echo "🚀 Starting Fionntán setup in project root: ${PROJECT_ROOT}"
 
 # --- Check and attempt to install pg_config if missing (Fedora specific) ---
+echo "Trying to run pg_config directly:"
+/usr/bin/pg_config --version
+echo "Exit code of direct run: $?"
+
+echo "Current PATH inside script: $PATH"
 if ! command -v pg_config &> /dev/null
 then
     echo "⚠️  pg_config command not found."

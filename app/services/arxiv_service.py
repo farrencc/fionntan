@@ -118,7 +118,7 @@ class ArxivService:
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error during search_papers. URL: {getattr(e, 'url', 'N/A')}, Code: {e.code}, Message: {e.msg}")
             if e.code == 429:
-                if _retry_count >= self.rate_limit_max_retries:
+                if _retry_count >= self.rate_limit_max_retries_internal:
                     logger.error("Max retries for search_papers reached after rate limiting. Raising.")
                     raise
                 logger.warning("Rate limit (429) on search_papers. Attempting to handle and retry.")
@@ -151,7 +151,7 @@ class ArxivService:
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error in get_paper_by_id({paper_id}). Code: {e.code}, Message: {e.msg}")
             if e.code == 429:
-                if _retry_count >= self.rate_limit_max_retries:
+                if _retry_count >= self.rate_limit_max_retries_internal:
                     logger.error(f"Max retries for get_paper_by_id({paper_id}) reached. Raising.")
                     raise
                 logger.warning(f"Rate limit (429) for get_paper_by_id({paper_id}). Handling and retrying.")
