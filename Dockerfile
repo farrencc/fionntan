@@ -9,11 +9,18 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Added libpq-dev for PostgreSQL client libraries (pg_config)
+# Added python3.11-dev for Python C headers (Python.h)
+# Added --no-install-recommends to potentially reduce image size
+# Added apt-get clean and rm -rf /var/lib/apt/lists/* for cleanup
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ffmpeg \
     libffi-dev \
     libssl-dev \
+    libpq-dev \
+    python3.11-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user early and set up directory structure
@@ -23,12 +30,19 @@ RUN mkdir -p /app/logs /app/uploads && \
 
 # Copy requirements first (for better caching)
 COPY --chown=appuser:appuser app/requirements.txt .
+
+# Upgrade pip and install Python dependencies
+# Note: Running pip install --upgrade pip inside the RUN command that also installs requirements
+# ensures that the upgraded pip is used for installing the requirements.
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Copy application code
 COPY --chown=appuser:appuser ./app ./app
 COPY --chown=appuser:appuser main.py .
+# If you have other top-level files or directories like 'migrations' that are needed at runtime,
+# ensure they are copied as well. For example:
+# COPY --chown=appuser:appuser migrations ./migrations
 
 USER appuser
 
