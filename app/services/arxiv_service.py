@@ -18,10 +18,9 @@ class ArxivService:
         self.client = arxiv.Client(
             page_size=100,
             delay_seconds=1,
-            # Set num_retries to 0 so our custom logic is fully tested by test_handle_rate_limit
-            num_retries=0
+            num_retries=0 
         )
-        self.rate_limit_max_retries_internal = 2 # Number of retries within _handle_rate_limit_internally
+        self.rate_limit_max_retries_internal = 2 
         self.rate_limit_base_delay = 1  # seconds for custom backoff
 
     def _build_search_query(
@@ -63,28 +62,24 @@ class ArxivService:
                 f"Rate limit: backing off for {delay:.2f} seconds "
                 f"(internal attempt {i+1}/{self.rate_limit_max_retries_internal})."
             )
-            time.sleep(delay) # This will be mocked in the test for test_handle_rate_limit
+            time.sleep(delay) 
             try:
                 test_search = arxiv.Search(query="all:test", max_results=1)
-                # The test_handle_rate_limit's side_effect on mock_arxiv_client.results
-                # will control the outcome of this self.client.results call.
-                next(self.client.results(test_search)) # Consume generator to trigger API call
+                next(self.client.results(test_search)) 
                 logger.info("Rate limit appears to be lifted after internal test ping.")
-                return  # Exit if the test ping was successful
+                return
             except urllib.error.HTTPError as e_test:
                 if e_test.code == 429:
                     logger.warning(f"Still rate-limited during internal ping (attempt {i+1}).")
                     if i == self.rate_limit_max_retries_internal - 1:
                         logger.error("Max retries for internal rate limit handling reached.")
-                        raise # Re-raise the last 429 error, to be caught by the original caller
+                        raise 
                 else:
                     logger.error(f"Non-429 HTTPError during rate limit test ping: {e_test}")
-                    raise # Re-raise other HTTP errors
+                    raise 
             except Exception as e_exc:
                 logger.error(f"Unexpected error during rate limit test ping: {e_exc}")
                 raise
-        # If loop finishes, it means all retries failed (should be caught by the raise in the loop)
-        # For safety, raise if somehow loop completes without returning or raising.
         raise urllib.error.HTTPError(
             'http://example.com/api', 429,
             'Failed to recover from rate limiting after internal retries.', {}, None
@@ -96,29 +91,45 @@ class ArxivService:
         categories: List[str] = None,
         authors: List[str] = None,
         max_results: int = 10,
-        page: int = 1, # Note: `page` is not directly used by arxiv.Search, iteration handles pages.
+        page: int = 1, 
         days_back: int = 30,
-        _retry_count: int = 0 # Internal counter for retries of the main search
+        sort_by_preference: str = "relevance", # MODIFIED: Added sort_by_preference
+        _retry_count: int = 0
     ) -> Tuple[List[Dict[str, Any]], int]:
         """Search ArXiv papers with filters and rate limit handling."""
         query = self._build_search_query(topics, categories, authors, days_back)
+        
+        # MODIFIED: Determine SortCriterion based on preference
+        if sort_by_preference == "lastUpdatedDate":
+            sort_criterion = arxiv.SortCriterion.LastUpdatedDate
+        elif sort_by_preference == "submittedDate":
+             sort_criterion = arxiv.SortCriterion.SubmittedDate
+        else:  # Default to relevance
+            sort_criterion = arxiv.SortCriterion.Relevance
+        
+        logger.info(f"Searching arXiv with query: '{query}', sort_by: {sort_criterion.value}, max_results: {max_results}")
+
         search = arxiv.Search(
             query=query,
             max_results=max_results,
-            sort_by=arxiv.SortCriterion.SubmittedDate, # Defaulting as per test expectation
+            sort_by=sort_criterion, # MODIFIED: Use the determined sort criterion
             sort_order=arxiv.SortOrder.Descending
         )
 
         try:
             results_iterable = self.client.results(search)
-            results_list = list(results_iterable)
+            results_list = list(results_iterable) # Convert iterator to list to get all results for count
             papers = [self._process_paper(result) for result in results_list]
-            total = len(papers)
+            # The 'total' here will be the number of results fetched up to max_results,
+            # not necessarily the total available in arXiv for that query.
+            # For true pagination 'total', the arxiv library might need deeper inspection or it might not provide it directly.
+            # For now, total is the count of items we received.
+            total = len(papers) 
             return papers, total
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error during search_papers. URL: {getattr(e, 'url', 'N/A')}, Code: {e.code}, Message: {e.msg}")
             if e.code == 429:
-                if _retry_count >= self.rate_limit_max_retries_internal:
+                if _retry_count >= self.rate_limit_max_retries_internal: # MODIFIED: Corrected attribute name
                     logger.error("Max retries for search_papers reached after rate limiting. Raising.")
                     raise
                 logger.warning("Rate limit (429) on search_papers. Attempting to handle and retry.")
@@ -128,11 +139,12 @@ class ArxivService:
                     return self.search_papers(
                         topics=topics, categories=categories, authors=authors,
                         max_results=max_results, page=page, days_back=days_back,
+                        sort_by_preference=sort_by_preference, # MODIFIED: Pass along
                         _retry_count=_retry_count + 1
                     )
-                except urllib.error.HTTPError as e_handle: # Catch if _handle_rate_limit_internally re-raises 429
+                except urllib.error.HTTPError as e_handle: 
                      logger.error(f"Failed to handle rate limit; _handle_rate_limit_internally also failed: {e_handle}")
-                     raise e_handle # Re-raise the error from the handler
+                     raise e_handle 
             else:
                 raise
         except Exception as e:
@@ -151,7 +163,7 @@ class ArxivService:
         except urllib.error.HTTPError as e:
             logger.error(f"HTTP error in get_paper_by_id({paper_id}). Code: {e.code}, Message: {e.msg}")
             if e.code == 429:
-                if _retry_count >= self.rate_limit_max_retries_internal:
+                if _retry_count >= self.rate_limit_max_retries_internal: # MODIFIED: Corrected attribute name
                     logger.error(f"Max retries for get_paper_by_id({paper_id}) reached. Raising.")
                     raise
                 logger.warning(f"Rate limit (429) for get_paper_by_id({paper_id}). Handling and retrying.")
@@ -170,17 +182,6 @@ class ArxivService:
 
     def _process_paper(self, paper) -> Dict[str, Any]:
         """Process ArXiv paper result into dictionary."""
-        # Add debug prints here if test_process_paper still fails on authors
-        # print(f"DEBUG: _process_paper received paper object: {type(paper)}")
-        # if hasattr(paper, 'authors'):
-        #     print(f"DEBUG: paper.authors type: {type(paper.authors)}")
-        #     if paper.authors:
-        #         print(f"DEBUG: first author type: {type(paper.authors[0])}")
-        #         print(f"DEBUG: first author.name type: {type(paper.authors[0].name)}")
-        #         print(f"DEBUG: first author.name value: {paper.authors[0].name}")
-        # authors_list = [author.name for author in paper.authors]
-        # print(f"DEBUG: Extracted authors_list: {authors_list}")
-
         try:
             return {
                 "id": paper.get_short_id(),

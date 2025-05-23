@@ -1,6 +1,6 @@
 # app/tasks/podcast_tasks.py
 
-from datetime import datetime
+from datetime import datetime, timezone # Added timezone
 import logging
 import uuid
 
@@ -15,200 +15,194 @@ logger = logging.getLogger(__name__)
 
 @celery.task(bind=True)
 def generate_podcast_script(self, task_id, podcast_id, use_preferences=True, paper_ids=None):
-    """Task to generate podcast script."""
+    task = None
+    podcast_obj = None
     try:
-        # Update task status
         task = GenerationTask.query.filter_by(task_id=task_id).first()
         if not task:
-            raise Exception("Task not found")
+            raise Exception(f"Script generation task not found: {task_id}")
         
         task.status = GenerationTask.STATUS_PROCESSING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc) # Use timezone-aware UTC
         db.session.commit()
         
-        # Get podcast and user
-        podcast = Podcast.query.get(podcast_id)
+        podcast_obj = Podcast.query.get(podcast_id)
         user = User.query.get(task.user_id)
         
-        if not podcast or not user:
-            raise Exception("Podcast or user not found")
+        if not podcast_obj or not user:
+            raise Exception("Podcast or user not found for script generation.")
         
-        # Update podcast status
-        podcast.status = Podcast.STATUS_PROCESSING
+        podcast_obj.status = Podcast.STATUS_PROCESSING
         db.session.commit()
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 10})
+        if hasattr(self, 'update_state'): # Check if self is a Celery task instance
+            self.update_state(state='PROGRESS', meta={'progress': 10})
         
-        # Get papers from ArXiv
         arxiv_service = ArxivService()
+        fetched_papers_data = None
         
         if use_preferences and user.preferences:
-            papers = arxiv_service.search_papers(
+            fetched_papers_data = arxiv_service.search_papers(
                 topics=user.preferences.topics,
                 categories=user.preferences.categories,
                 authors=user.preferences.authors,
                 max_results=min(user.preferences.max_results, 5),
-                days_back=user.preferences.days_back
+                days_back=user.preferences.days_back,
+                sort_by_preference=user.preferences.sort_by
             )
         elif paper_ids:
-            papers = []
-            for paper_id in paper_ids:
-                paper = arxiv_service.get_paper_by_id(paper_id)
+            temp_papers_list = []
+            for paper_id_val in paper_ids: # Renamed paper_id to avoid conflict
+                paper = arxiv_service.get_paper_by_id(paper_id_val)
                 if paper:
-                    papers.append(paper)
+                    temp_papers_list.append(paper)
+            if temp_papers_list:
+                 fetched_papers_data = (temp_papers_list, len(temp_papers_list))
         else:
-            raise Exception("No papers to generate script from")
+            raise Exception("No paper source defined: use_preferences or paper_ids required.")
         
+        papers = fetched_papers_data[0] if fetched_papers_data and fetched_papers_data[0] else []
+
         if not papers:
-            raise Exception("No papers found")
+            raise Exception("No papers found based on the provided criteria.")
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 30})
+        if hasattr(self, 'update_state'):
+            self.update_state(state='PROGRESS', meta={'progress': 30})
         
-        # Generate script using Gemini
         gemini_service = GeminiService()
         script_content = gemini_service.generate_script(
             papers=papers,
-            technical_level=podcast.technical_level,
-            target_length=podcast.target_length,
-            episode_title=podcast.title
+            technical_level=podcast_obj.technical_level,
+            target_length=podcast_obj.target_length,
+            episode_title=podcast_obj.title
         )
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 70})
+        if hasattr(self, 'update_state'):
+            self.update_state(state='PROGRESS', meta={'progress': 70})
         
-        # Save script to database
         script = PodcastScript(
-            podcast_id=podcast.id,
+            podcast_id=podcast_obj.id,
             script_content=script_content,
             paper_ids=[paper['id'] for paper in papers]
         )
         db.session.add(script)
         
-        # Update podcast status
-        podcast.status = Podcast.STATUS_COMPLETED
-        podcast.completed_at = datetime.utcnow()
-        db.session.commit()
-        
-        # Update task status
         task.status = GenerationTask.STATUS_COMPLETED
-        task.completed_at = datetime.utcnow()
         task.progress = 100
-        db.session.commit()
+        task.completed_at = datetime.now(timezone.utc) # Use timezone-aware UTC
         
-        # Queue audio generation task
+        # Create and COMMIT audio task record BEFORE calling .delay()
         audio_task_id = str(uuid.uuid4())
-        audio_task = GenerationTask(
+        audio_task_record = GenerationTask(
             user_id=user.id,
-            podcast_id=podcast.id,
+            podcast_id=podcast_obj.id,
             task_id=audio_task_id,
             task_type=GenerationTask.TYPE_AUDIO_GENERATION,
             status=GenerationTask.STATUS_QUEUED
         )
-        db.session.add(audio_task)
-        db.session.commit()
-        
-        # Start audio generation
-        celery_task = generate_podcast_audio.delay(
-            task_id=audio_task_id,
-            podcast_id=podcast_id
+        db.session.add(audio_task_record)
+        db.session.commit() # MODIFIED: Commit audio task record here
+
+        celery_audio_task = generate_podcast_audio.delay(
+            task_id=audio_task_id, # Pass the ID of the committed audio task record
+            podcast_id=podcast_obj.id
         )
         
-        audio_task.metadata = {'celery_task_id': celery_task.id}
-        db.session.commit()
-        
-        return {'status': 'completed', 'progress': 100}
+        # Update the just-committed audio_task_record with the Celery ID
+        # Need to re-fetch or be careful if session expired due to commit.
+        # For safety, re-fetch.
+        committed_audio_task_record = GenerationTask.query.filter_by(task_id=audio_task_id).first()
+        if committed_audio_task_record:
+            committed_audio_task_record.metadata = {'celery_task_id': celery_audio_task.id}
+            db.session.commit()
+        else:
+            logger.error(f"Failed to find committed audio task record for ID {audio_task_id} to update with Celery ID.")
+
+        return {'status': 'script_completed', 'audio_task_id': audio_task_id, 'progress': 100}
         
     except Exception as e:
-        logger.error(f"Error generating script: {str(e)}")
-        
-        # Update task status
+        logger.error(f"Error generating script for podcast_id {podcast_id}: {str(e)}", exc_info=True)
         if task:
             task.status = GenerationTask.STATUS_FAILED
             task.error_message = str(e)
-            task.completed_at = datetime.utcnow()
-            db.session.commit()
-        
-        # Update podcast status
-        if podcast:
-            podcast.status = Podcast.STATUS_FAILED
-            podcast.error_message = str(e)
-            db.session.commit()
-        
+            task.completed_at = datetime.now(timezone.utc) # Use timezone-aware UTC
+        if podcast_obj:
+            podcast_obj.status = Podcast.STATUS_FAILED
+            podcast_obj.error_message = str(e)
+        db.session.commit()
         raise
 
 @celery.task(bind=True)
 def generate_podcast_audio(self, task_id, podcast_id):
-    """Task to generate podcast audio."""
+    task = None
+    podcast_obj = None
     try:
-        # Update task status
         task = GenerationTask.query.filter_by(task_id=task_id).first()
         if not task:
-            raise Exception("Task not found")
+            # This was the error: if the task record wasn't committed before .delay was called.
+            logger.error(f"Audio generation task record not found in DB for task_id: {task_id}")
+            raise Exception(f"Audio generation task not found: {task_id}")
         
         task.status = GenerationTask.STATUS_PROCESSING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc) # Use timezone-aware UTC
         db.session.commit()
         
-        # Get podcast and script
-        podcast = Podcast.query.get(podcast_id)
-        if not podcast or not podcast.script:
-            raise Exception("Podcast or script not found")
+        podcast_obj = Podcast.query.get(podcast_id)
+        if not podcast_obj or not podcast_obj.script:
+            raise Exception(f"Podcast (ID: {podcast_id}) or its script not found for audio generation.")
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 10})
+        if hasattr(self, 'update_state'):
+            self.update_state(state='PROGRESS', meta={'progress': 10})
         
-        # Generate audio using TTS
         tts_service = TTSService()
-        audio_file = tts_service.generate_audio(
-            script_content=podcast.script.script_content,
-            voice_preference='mixed'  # Could be made configurable per user
+        audio_file_bytes = tts_service.generate_audio(
+            script_content=podcast_obj.script.script_content,
+            voice_preference='mixed'
         )
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 60})
+        if hasattr(self, 'update_state'):
+            self.update_state(state='PROGRESS', meta={'progress': 60})
         
-        # Upload audio to storage
         storage_service = StorageService()
         file_url = storage_service.upload_audio(
-            audio_file,
-            filename=f"podcast_{podcast_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.mp3"
+            audio_file_bytes,
+            filename=f"podcast_{podcast_obj.id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.mp3"
         )
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={'progress': 80})
+        if hasattr(self, 'update_state'):
+            self.update_state(state='PROGRESS', meta={'progress': 80})
         
-        # Get audio file info
-        file_size = len(audio_file)
-        duration = tts_service.get_audio_duration(audio_file)
+        file_size = len(audio_file_bytes)
+        duration = tts_service.get_audio_duration(audio_file_bytes)
         
-        # Save audio info to database
-        audio = PodcastAudio(
-            podcast_id=podcast.id,
+        audio_record = PodcastAudio(
+            podcast_id=podcast_obj.id,
             file_url=file_url,
             file_size=file_size,
             duration=duration,
             audio_format='mp3'
         )
-        db.session.add(audio)
+        db.session.add(audio_record)
         
-        # Update task status
+        podcast_obj.status = Podcast.STATUS_COMPLETED
+        podcast_obj.completed_at = datetime.now(timezone.utc) # Use timezone-aware UTC
+        podcast_obj.error_message = None
+        
         task.status = GenerationTask.STATUS_COMPLETED
-        task.completed_at = datetime.utcnow()
+        task.completed_at = datetime.now(timezone.utc) # Use timezone-aware UTC
         task.progress = 100
         db.session.commit()
         
-        return {'status': 'completed', 'progress': 100}
+        return {'status': 'audio_completed', 'file_url': file_url, 'progress': 100}
         
     except Exception as e:
-        logger.error(f"Error generating audio: {str(e)}")
-        
-        # Update task status
+        logger.error(f"Error generating audio for podcast_id {podcast_id}: {str(e)}", exc_info=True)
         if task:
             task.status = GenerationTask.STATUS_FAILED
             task.error_message = str(e)
-            task.completed_at = datetime.utcnow()
-            db.session.commit()
-        
+            task.completed_at = datetime.now(timezone.utc) # Use timezone-aware UTC
+        if podcast_obj:
+            podcast_obj.status = Podcast.STATUS_FAILED
+            podcast_obj.error_message = f"Audio generation failed: {str(e)}"
+        db.session.commit()
         raise

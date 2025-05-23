@@ -149,3 +149,34 @@ def test_handle_rate_limit(mock_sleep, mock_arxiv_client):
     assert papers[0]["title"] == "t_final"
     assert mock_sleep.call_count >= 1
     assert mock_arxiv_client.results.call_count == 4
+
+def test_search_papers_sort_by_preference(mock_arxiv_client):
+    """Test that search_papers uses the sort_by_preference."""
+    service = ArxivService()
+    mock_arxiv_client.results.return_value = iter([
+        MockArxivResult(entry_id_url="http://arxiv.org/abs/2301.00001v1", title="Test Paper 1", summary="Abstract 1")
+    ])
+
+    # Test with relevance
+    service.search_papers(topics=["AI"], sort_by_preference="relevance")
+    args, kwargs = mock_arxiv_client.results.call_args
+    search_instance_relevance = args[0]
+    assert search_instance_relevance.sort_by == arxiv.SortCriterion.Relevance
+
+    # Test with lastUpdatedDate
+    service.search_papers(topics=["AI"], sort_by_preference="lastUpdatedDate")
+    args, kwargs = mock_arxiv_client.results.call_args
+    search_instance_last_updated = args[0]
+    assert search_instance_last_updated.sort_by == arxiv.SortCriterion.LastUpdatedDate
+
+    # Test with submittedDate
+    service.search_papers(topics=["AI"], sort_by_preference="submittedDate")
+    args, kwargs = mock_arxiv_client.results.call_args
+    search_instance_submitted_date = args[0]
+    assert search_instance_submitted_date.sort_by == arxiv.SortCriterion.SubmittedDate
+
+    # Test with default (should be relevance as per our ArxivService change)
+    service.search_papers(topics=["AI"])
+    args, kwargs = mock_arxiv_client.results.call_args
+    search_instance_default = args[0]
+    assert search_instance_default.sort_by == arxiv.SortCriterion.Relevance
