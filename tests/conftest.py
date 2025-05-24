@@ -1,10 +1,11 @@
 # tests/conftest.py
 
-import sys
-import os
 import pytest
 import uuid
-from datetime import datetime, timezone # Import timezone for UTC awareness
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch # Ensure MagicMock and patch are imported
+import sys
+import os
 
 # Add the project root directory (parent of 'tests') to sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -15,73 +16,61 @@ if project_root not in sys.path:
 from app import create_app, db as flask_db_instance, celery as celery_app
 from app.models import User, UserPreference, Podcast, GenerationTask, PodcastScript, PodcastAudio
 from flask_jwt_extended import create_access_token, create_refresh_token
+# Import actual service classes for spec if desired (optional, but good practice)
+# from app.services.arxiv_service import ArxivService
+# from app.services.gemini_service import GeminiService
+# from app.services.tts_service import TTSService
+# from app.services.storage_service import StorageService
 
+
+# --- App and DB Fixtures (Keep as they are) ---
 @pytest.fixture(scope='session')
 def app():
     """Create and configure a new app instance for the test session."""
-    app_instance = create_app('testing') # Your app factory from app/__init__.py
+    app_instance = create_app('testing')
     test_config = {
         "TESTING": True,
         "SQLALCHEMY_DATABASE_URI": os.environ.get('TEST_DATABASE_URL', "sqlite:///:memory:"),
         "SQLALCHEMY_TRACK_MODIFICATIONS": False,
-        "JWT_SECRET_KEY": "test-super-secret-key-for-testing", # Consistent secret for tests
-        "SERVER_NAME": "localhost.test", # Helps with url_for in tests if needed
-        
-        # Celery configuration for testing:
-        "CELERY_TASK_ALWAYS_EAGER": True,  # Tasks execute locally, synchronously
-        "CELERY_TASK_EAGER_PROPAGATES": True, # Exceptions in eager tasks are re-raised
-        "CELERY_BROKER_URL": "memory://",       # Use in-memory broker
-        "CELERY_RESULT_BACKEND": "cache+memory://", # Use in-memory result backend
-        "BROKER_URL": "memory://", # For older celery versions/compatibility
-
-        # Flask-Limiter configuration for testing:
-        "RATELIMIT_STORAGE_URL": "memory://", # Use in-memory for tests
-        "RATELIMIT_ENABLED": False, # Often good to disable rate limiting for tests
-                                    # unless specifically testing limiter behavior.
-        "SESSION_COOKIE_SECURE": False, # Allow session cookies over HTTP for testing
-        "DEBUG": False, # Usually False for testing to catch errors as they'd appear in prod
+        "JWT_SECRET_KEY": "test-super-secret-key-for-testing",
+        "SERVER_NAME": "localhost.test",
+        "CELERY_TASK_ALWAYS_EAGER": True,
+        "CELERY_TASK_EAGER_PROPAGATES": True,
+        "CELERY_BROKER_URL": "memory://",
+        "CELERY_RESULT_BACKEND": "cache+memory://",
+        "BROKER_URL": "memory://",
+        "RATELIMIT_STORAGE_URL": "memory://",
+        "RATELIMIT_ENABLED": False,
+        "SESSION_COOKIE_SECURE": False,
+        "DEBUG": False,
     }
     app_instance.config.update(test_config)
-
-    # Directly update the Celery app instance's config
-    # This is important because Celery might have already been configured
-    # when the app was created by create_app.
     celery_app.conf.update(
         broker_url=app_instance.config['CELERY_BROKER_URL'],
         result_backend=app_instance.config['CELERY_RESULT_BACKEND'],
         task_always_eager=app_instance.config['CELERY_TASK_ALWAYS_EAGER'],
         task_eager_propagates=app_instance.config['CELERY_TASK_EAGER_PROPAGATES']
     )
-    
     return app_instance
 
 @pytest.fixture(scope='function')
 def db(app):
-    """
-    Set up database tables for each test function using the app context.
-    Yields the SQLAlchemy extension instance.
-    """
+    """Set up database tables for each test function using the app context."""
     with app.app_context():
         flask_db_instance.create_all()
-        yield flask_db_instance # Provide the db extension instance
-        flask_db_instance.session.remove() # Clean up the session
+        yield flask_db_instance
+        flask_db_instance.session.remove()
         flask_db_instance.drop_all()
 
 @pytest.fixture(scope='function')
-def db_session(app, db): # db fixture ensures tables are created and app context is active
-    """
-    Provides a SQLAlchemy session scoped to a test function, managing a transaction.
-    """
-    with app.app_context(): # Ensure app context is active for session creation
+def db_session(app, db):
+    """Provides a SQLAlchemy session scoped to a test function, managing a transaction."""
+    with app.app_context():
         connection = db.engine.connect()
         transaction = connection.begin()
-        
-        # Use the session factory from the SQLAlchemy instance, bound to the connection
         session = db.Session(bind=connection)
-
         yield session
-
-        session.close() # Important to close the session
+        session.close()
         transaction.rollback()
         connection.close()
 
@@ -96,18 +85,15 @@ def runner(app):
     return app.test_cli_runner()
 
 @pytest.fixture(scope='function')
-def test_user(db, db_session): # Uses function-scoped db & db_session
+def test_user(db, db_session):
     """Create and save a test user for each test. Ensures user_id is populated."""
-    # Create user with a unique google_id for each invocation
     unique_google_id = f"test-google-id-{uuid.uuid4()}"
     user = User(
-        email=f'{unique_google_id}@example.com', # Ensure email is also unique
+        email=f'{unique_google_id}@example.com',
         name='Test User',
         google_id=unique_google_id,
-        last_login=datetime.now(timezone.utc) # Use timezone-aware UTC
+        last_login=datetime.now(timezone.utc)
     )
-    
-    # Create and associate preferences
     user_preferences = UserPreference(
         topics=['machine learning'],
         categories=['cs.AI'],
@@ -117,15 +103,12 @@ def test_user(db, db_session): # Uses function-scoped db & db_session
         sort_by='relevance'
     )
     user.preferences = user_preferences
-
     db_session.add(user)
-    db_session.commit() # Commit to populate user.id and persist user/preferences
-    
-    # Re-fetch to ensure the instance is bound to the current session and all attributes are loaded
-    return db_session.get(User, user.id) 
+    db_session.commit()
+    return db_session.get(User, user.id)
 
 @pytest.fixture
-def auth_headers(app, test_user): # test_user now guarantees an ID
+def auth_headers(app, test_user):
     """Create authentication headers for the test_user."""
     with app.app_context():
         if test_user is None or test_user.id is None:
@@ -134,7 +117,7 @@ def auth_headers(app, test_user): # test_user now guarantees an ID
     return {'Authorization': f'Bearer {access_token}'}
 
 @pytest.fixture
-def refresh_auth_headers(app, test_user): # New fixture for refresh tokens
+def refresh_auth_headers(app, test_user):
     with app.app_context():
         if test_user is None or test_user.id is None:
             pytest.fail("test_user fixture did not provide a committed user with an ID.")
@@ -142,54 +125,89 @@ def refresh_auth_headers(app, test_user): # New fixture for refresh tokens
     return {'Authorization': f'Bearer {refresh_token}'}
 
 
-# --- Mock Service Fixtures ---
+# --- Corrected Mock Service Fixtures ---
 @pytest.fixture
 def mock_arxiv_service(monkeypatch):
-    class MockArxivService:
-        def search_papers(self, topics=None, categories=None, authors=None, max_results=10, page=1, days_back=30, sort_by_preference="relevance"):
-            return ([{'id': 'test-paper-1', 'title': 'Test Paper', 'authors': ['Test Author'],'abstract': 'Test abstract', 'categories': ['cs.AI'], 'published': '2024-01-01','updated': '2024-01-01', 'url': 'http://example.com/test-paper-1','comment': 'A test comment', 'primary_category': 'cs.AI'}], 1)
-        def get_paper_by_id(self, paper_id): return {'id': paper_id, 'title': 'Mock Paper by ID', 'authors': ['Test Author'],'abstract': 'Test abstract by ID', 'categories': ['cs.AI'], 'published': '2024-01-01','updated': '2024-01-01', 'url': f'http://example.com/{paper_id}','comment': 'A test comment by ID', 'primary_category': 'cs.AI'}
+    mock_instance = MagicMock() # Use spec=ArxivService if ArxivService is imported
     
-    # Patch where ArxivService is imported by the modules using it
-    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules.get('app.tasks.podcast_tasks'), 'ArxivService'):
-        monkeypatch.setattr('app.tasks.podcast_tasks.ArxivService', MockArxivService)
-    if 'app.api.arxiv' in sys.modules and hasattr(sys.modules.get('app.api.arxiv'), 'ArxivService'):
-        monkeypatch.setattr('app.api.arxiv.ArxivService', MockArxivService)
-    monkeypatch.setattr('app.services.arxiv_service.ArxivService', MockArxivService, raising=False) 
-    return MockArxivService()
+    # Configure the 'search_papers' method
+    mock_search_return = ([{
+        'id': 'test-paper-1', 'title': 'Test Paper from Mock', 
+        'authors': ['Mock Author'], 'abstract': 'Mock abstract content.',
+        'categories': ['cs.AI'], 'published': '2024-01-01',
+        'updated': '2024-01-01', 'url': 'http://example.com/test-paper-1',
+        'comment': 'A mock comment', 'primary_category': 'cs.AI'
+    }], 1) # Returns 1 paper, total_count 1
+    mock_instance.search_papers = MagicMock(return_value=mock_search_return)
+
+    # Configure the 'get_paper_by_id' method
+    mock_instance.get_paper_by_id = MagicMock(return_value={
+        'id': 'test-paper-id-get', 'title': 'Specific Mock Paper by ID', 
+        'authors': ['Mock Author Get'], 'abstract': 'Abstract for specific mock paper.',
+        'categories': ['cs.LG'], 'published': '2024-01-02', 
+        'updated': '2024-01-02', 'url': 'http://example.com/test-paper-id-get',
+        'comment': 'Comment for specific paper get', 'primary_category': 'cs.LG'
+    })
+
+    def mock_constructor(*args, **kwargs):
+        return mock_instance
+
+    # Primary patch: Patch the ArxivService class in the module where it's defined.
+    # This is usually the most effective way.
+    monkeypatch.setattr('app.services.arxiv_service.ArxivService', mock_constructor)
+    
+    # Also patch it where it might be directly imported in specific modules under test, if necessary.
+    # This handles cases where modules might have `from app.services import ArxivService` and use it.
+    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules['app.tasks.podcast_tasks'], 'ArxivService'):
+        monkeypatch.setattr(sys.modules['app.tasks.podcast_tasks'], 'ArxivService', mock_constructor)
+    if 'app.api.arxiv' in sys.modules and hasattr(sys.modules['app.api.arxiv'], 'ArxivService'):
+        monkeypatch.setattr(sys.modules['app.api.arxiv'], 'ArxivService', mock_constructor)
+        
+    return mock_instance
 
 @pytest.fixture
 def mock_gemini_service(monkeypatch):
-    class MockGeminiService:
-        def __init__(self, *args, **kwargs): pass # Mock __init__
-        def generate_script(self, papers, technical_level, target_length, episode_title=None):
-            return {'title': episode_title or 'Mock Script from Gemini', 'sections': [{'title': 'INTRODUCTION', 'segments': [{'speaker': 'alex', 'text': 'Mock intro from Gemini'}]}]}
+    mock_instance = MagicMock() # Use spec=GeminiService if GeminiService is imported
+    mock_instance.generate_script = MagicMock(return_value={
+        'title': 'Mock Script from E2E Gemini', 
+        'sections': [{'title': 'E2E_INTRODUCTION', 'segments': [{'speaker': 'alex', 'text': 'E2E Mock intro from Gemini'}]}]
+    })
     
-    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules.get('app.tasks.podcast_tasks'), 'GeminiService'):
-        monkeypatch.setattr('app.tasks.podcast_tasks.GeminiService', MockGeminiService)
-    monkeypatch.setattr('app.services.gemini_service.GeminiService', MockGeminiService, raising=False)
-    return MockGeminiService()
+    def mock_constructor(*args, **kwargs):
+        return mock_instance
+
+    monkeypatch.setattr('app.services.gemini_service.GeminiService', mock_constructor)
+    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules['app.tasks.podcast_tasks'], 'GeminiService'):
+        monkeypatch.setattr(sys.modules['app.tasks.podcast_tasks'], 'GeminiService', mock_constructor)
+         
+    return mock_instance
 
 @pytest.fixture
 def mock_tts_service(monkeypatch):
-    class MockTTSService:
-        def __init__(self, *args, **kwargs): pass # Mock __init__
-        def generate_audio(self, script_content, voice_preference='mixed'): return b'mock tts audio'
-        def get_audio_duration(self, audio_data): return 180
-    
-    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules.get('app.tasks.podcast_tasks'), 'TTSService'):
-        monkeypatch.setattr('app.tasks.podcast_tasks.TTSService', MockTTSService)
-    monkeypatch.setattr('app.services.tts_service.TTSService', MockTTSService, raising=False)
-    return MockTTSService()
+    mock_instance = MagicMock() # Use spec=TTSService if TTSService is imported
+    mock_instance.generate_audio = MagicMock(return_value=b'mock e2e tts audio data')
+    mock_instance.get_audio_duration = MagicMock(return_value=180)
+
+    def mock_constructor(*args, **kwargs):
+        return mock_instance
+
+    monkeypatch.setattr('app.services.tts_service.TTSService', mock_constructor)
+    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules['app.tasks.podcast_tasks'], 'TTSService'):
+        monkeypatch.setattr(sys.modules['app.tasks.podcast_tasks'], 'TTSService', mock_constructor)
+        
+    return mock_instance
 
 @pytest.fixture
 def mock_storage_service(monkeypatch):
-    class MockStorageService:
-        def __init__(self, *args, **kwargs): pass # Mock __init__
-        def upload_audio(self, audio_data, filename): return f'https://fake.storage.com/{filename}'
-        def download_audio(self, file_url): return '/tmp/fakedownload.mp3'
+    mock_instance = MagicMock() # Use spec=StorageService if StorageService is imported
+    mock_instance.upload_audio = MagicMock(return_value='https://fake.storage.com/podcast_e2e_test.mp3')
+    mock_instance.download_audio = MagicMock(return_value='/tmp/mock_e2e_downloaded_audio.mp3')
+
+    def mock_constructor(*args, **kwargs):
+        return mock_instance
+
+    monkeypatch.setattr('app.services.storage_service.StorageService', mock_constructor)
+    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules['app.tasks.podcast_tasks'], 'StorageService'):
+        monkeypatch.setattr(sys.modules['app.tasks.podcast_tasks'], 'StorageService', mock_constructor)
         
-    if 'app.tasks.podcast_tasks' in sys.modules and hasattr(sys.modules.get('app.tasks.podcast_tasks'), 'StorageService'):
-        monkeypatch.setattr('app.tasks.podcast_tasks.StorageService', MockStorageService)
-    monkeypatch.setattr('app.services.storage_service.StorageService', MockStorageService, raising=False)
-    return MockStorageService()
+    return mock_instance

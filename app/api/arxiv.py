@@ -2,20 +2,25 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, ValidationError
 
 from ..services.arxiv_service import ArxivService
-from ..api.errors import error_response, ApiException
+from ..api.errors import error_response
 
 arxiv_bp = Blueprint('arxiv', __name__)
 
-# Schemas for request validation
 class SearchSchema(Schema):
-    topics = fields.List(fields.String(), missing=[])
-    categories = fields.List(fields.String(), missing=[])
-    authors = fields.List(fields.String(), missing=[])
-    max_results = fields.Integer(validate=validate.Range(min=1, max=50), missing=10)
-    page = fields.Integer(validate=validate.Range(min=1), missing=1)
+    topics = fields.List(fields.String(), load_default=[])
+    categories = fields.List(fields.String(), load_default=[])
+    authors = fields.List(fields.String(), load_default=[])
+    max_results = fields.Integer(validate=validate.Range(min=1, max=50), load_default=10)
+    page = fields.Integer(validate=validate.Range(min=1), load_default=1)
+    # Renamed field to match what ArxivService expects, will use data_key for query param
+    sort_by_preference = fields.String(
+        validate=validate.OneOf(['relevance', 'lastUpdatedDate', 'submittedDate']),
+        load_default='relevance',
+        data_key='sort_by_preference' # Explicitly state data_key for clarity, though it's default
+    )
 
 search_schema = SearchSchema()
 
@@ -24,36 +29,46 @@ search_schema = SearchSchema()
 def search_papers():
     """Search ArXiv papers."""
     try:
-        # Validate query parameters
-        params = search_schema.load(request.args)
+        # Manually parse MultiDict into a dict suitable for Marshmallow,
+        # ensuring list fields get lists and single fields get single values.
+        parsed_args = {}
+        for key in request.args:
+            if key in ['topics', 'categories', 'authors']: # Fields expected as lists
+                parsed_args[key] = request.args.getlist(key)
+            else: # Scalar fields
+                parsed_args[key] = request.args.get(key)
         
-        # Initialize ArXiv service
+        # Validate query parameters using the manually parsed dictionary
+        params = search_schema.load(parsed_args)
+        
         arxiv_service = ArxivService()
         
-        # Perform search
-        papers, total = arxiv_service.search_papers(
-            topics=params['topics'],
-            categories=params['categories'],
-            authors=params['authors'],
-            max_results=params['max_results'],
-            page=params['page']
+        papers_list, total_results = arxiv_service.search_papers(
+            topics=params.get('topics'), # .get() is fine, schema provides defaults
+            categories=params.get('categories'),
+            authors=params.get('authors'),
+            max_results=params.get('max_results'),
+            page=params.get('page'),
+            sort_by_preference=params.get('sort_by_preference')
         )
         
-        # Calculate pagination
-        per_page = params['max_results']
-        total_pages = (total + per_page - 1) // per_page
+        per_page = params.get('max_results')
+        total_pages = (total_results + per_page - 1) // per_page if total_results > 0 and per_page > 0 else 0
         
         return jsonify({
-            'papers': [paper.to_dict() for paper in papers],
-            'total': total,
-            'page': params['page'],
+            'papers': papers_list,
+            'total': total_results,
+            'page': params.get('page'),
             'pages': total_pages
         })
+    except ValidationError as err: 
+        current_app.logger.error(f"ArXiv search schema validation error: {err.messages}")
+        return error_response(400, err.messages)
     except Exception as e:
-        current_app.logger.error(f"ArXiv search error: {str(e)}")
+        current_app.logger.error(f"ArXiv search error: {str(e)}", exc_info=True)
         return error_response(500, "Failed to search papers")
 
-@arxiv_bp.route('/paper/<paper_id>', methods=['GET'])
+@arxiv_bp.route('/paper/<path:paper_id>', methods=['GET'])
 @jwt_required()
 def get_paper(paper_id):
     """Get specific paper by ID."""
@@ -64,9 +79,9 @@ def get_paper(paper_id):
         if not paper:
             return error_response(404, "Paper not found")
         
-        return jsonify(paper.to_dict())
+        return jsonify(paper)
     except Exception as e:
-        current_app.logger.error(f"Error retrieving paper {paper_id}: {str(e)}")
+        current_app.logger.error(f"Error retrieving paper {paper_id}: {str(e)}", exc_info=True)
         return error_response(500, "Failed to retrieve paper")
 
 @arxiv_bp.route('/categories', methods=['GET'])
