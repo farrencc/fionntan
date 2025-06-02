@@ -16,6 +16,7 @@ pkgs.mkShell {
     libxslt
     postgresql
     sqlite
+    redis
     
     # Audio processing dependencies
     ffmpeg

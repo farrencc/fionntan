@@ -76,3 +76,5 @@ coverage.xml
 tmp/
 .cache/
 node_modules
+daniel_env
+credentials.json
