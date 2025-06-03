@@ -36,21 +36,21 @@ class StorageService:
         try:
             # Create a unique file path
             file_path = f"audio/{datetime.utcnow().strftime('%Y/%m/%d')}/{filename}"
-            
+        
             # Upload to GCS
             blob = self.bucket.blob(file_path)
             blob.upload_from_string(audio_data, content_type='audio/mpeg')
-            
-            # Make the file publicly accessible
-            blob.make_public()
-            
-            # Return public URL
-            return blob.public_url
-            
+        
+            # Remove this line that's causing the error:
+            # blob.make_public()
+        
+            # Return the storage URL (not public URL)
+            return f"gs://{self.bucket_name}/{file_path}"
+        
         except Exception as e:
             logger.error(f"Error uploading audio: {str(e)}")
-            raise
-    
+            raise 
+
     def download_audio(self, file_url: str) -> str:
         """Download audio file and return local path."""
         try:

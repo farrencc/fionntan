@@ -103,113 +103,78 @@ def test_storage():
         print_result("Storage Service", False, str(e))
         return False
 
+
 def test_gemini():
     """Test Gemini API service"""
     print_section("GEMINI API SERVICE")
     
-    api_key = os.getenv('GEMINI_API_KEY')
-    if not api_key:
-        print_result("Gemini configuration", False, "GEMINI_API_KEY not set in .env")
-        return False
-    
     try:
-        import google.generativeai as genai
+        from app import create_app
+        from app.services.gemini_service import GeminiService
         
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        print_result("Gemini client initialization", True)
-        
-        # Test basic generation
-        response = model.generate_content("Say hello in one sentence.")
-        
-        has_text = bool(response.text and len(response.text.strip()) > 0)
-        print_result("Text generation", has_text, f"Generated {len(response.text)} characters")
-        
-        # Test podcast-style generation
-        podcast_prompt = """Create a brief dialogue:
-        HOST1: Welcome to our show!
-        HOST2: [respond with excitement]"""
-        
-        podcast_response = model.generate_content(podcast_prompt)
-        has_dialogue = "HOST1:" in podcast_response.text and "HOST2:" in podcast_response.text
-        print_result("Podcast dialogue format", has_dialogue, "Structured dialogue generated")
-        
-        return True
-        
-    except ImportError:
-        print_result("Gemini library", False, "google-generativeai not installed")
-        return False
+        app = create_app('development')
+        with app.app_context():
+            service = GeminiService()
+            print_result("Gemini client initialization", True)
+            
+            # Test basic generation
+            mock_papers = [{'id': 'test', 'title': 'Test Paper', 'abstract': 'Test abstract', 'authors': ['Test Author']}]
+            response = service.generate_script(papers=mock_papers, target_length=5)
+            
+            has_script = bool(response and 'title' in response)
+            print_result("Script generation", has_script)
+            
+            return True
     except Exception as e:
         print_result("Gemini Service", False, str(e))
         return False
 
+
 def test_end_to_end_workflow():
-    """Test a mini end-to-end workflow"""
+    """Test a mini end-to-end workflow using actual services"""
     print_section("END-TO-END WORKFLOW TEST")
     
     try:
-        # Step 1: Generate script with Gemini
-        import google.generativeai as genai
-        from google.cloud import texttospeech, storage
+        from app import create_app
+        from app.services.arxiv_service import ArxivService
+        from app.services.gemini_service import GeminiService
+        from app.services.tts_service import TTSService
+        from app.services.storage_service import StorageService
         
-        api_key = os.getenv('GEMINI_API_KEY')
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
-        script_prompt = "Write one sentence from a podcast host introducing an AI research paper."
-        script_response = model.generate_content(script_prompt)
-        script_text = script_response.text.strip()
-        
-        print_result("Script generation", len(script_text) > 0, f"Generated: {script_text[:50]}...")
-        
-        # Step 2: Convert to audio with TTS
-        tts_client = texttospeech.TextToSpeechClient()
-        synthesis_input = texttospeech.SynthesisInput(text=script_text)
-        voice = texttospeech.VoiceSelectionParams(
-            language_code="en-US",
-            name="en-US-Neural2-D",
-            ssml_gender=texttospeech.SsmlVoiceGender.MALE
-        )
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3
-        )
-        
-        audio_response = tts_client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
-        
-        audio_data = audio_response.audio_content
-        print_result("Audio generation", len(audio_data) > 0, f"Generated {len(audio_data)} bytes audio")
-        
-        # Step 3: Upload to storage
-        storage_client = storage.Client()
-        bucket_name = os.getenv('GCS_BUCKET_NAME')
-        bucket = storage_client.bucket(bucket_name)
-        
-        blob = bucket.blob("test/end_to_end_test.mp3")
-        blob.upload_from_string(audio_data, content_type='audio/mpeg')
-        
-        # Make public for testing
-        blob.make_public()
-        public_url = blob.public_url
-        
-        print_result("Audio storage", True, f"Uploaded to: {public_url[:50]}...")
-        
-        # Cleanup
-        blob.delete()
-        print_result("Workflow cleanup", True, "Test file removed")
-        
-        print("\n🎉 END-TO-END WORKFLOW SUCCESSFUL!")
-        print("🎙️  Your system can generate complete podcasts!")
-        
-        return True
-        
+        app = create_app('development')
+        with app.app_context():
+            # Step 1: Get papers
+            arxiv_service = ArxivService()
+            papers, total = arxiv_service.search_papers(topics=['machine learning'], max_results=1)
+            print_result("Paper retrieval", len(papers) > 0, f"Found {len(papers)} papers")
+            
+            # Step 2: Generate script
+            gemini_service = GeminiService()
+            script = gemini_service.generate_script(papers=papers[:1], target_length=5)
+            print_result("Script generation", 'title' in script, f"Generated: {script.get('title', '')[:50]}...")
+            
+            # Step 3: Generate audio
+            tts_service = TTSService()
+            audio_data = tts_service.generate_audio(script)
+            print_result("Audio generation", len(audio_data) > 0, f"Generated {len(audio_data)} bytes audio")
+            
+            # Step 4: Upload to storage
+            storage_service = StorageService()
+            file_url = storage_service.upload_audio(audio_data, filename="test_e2e.mp3")
+            print_result("Audio storage", file_url is not None, f"Uploaded to storage")
+            
+            # Cleanup
+            if file_url:
+                storage_service.delete_audio(file_url)
+                print_result("Workflow cleanup", True, "Test file removed")
+            
+            print("\n🎉 END-TO-END WORKFLOW SUCCESSFUL!")
+            return True
+            
     except Exception as e:
         print_result("End-to-end workflow", False, str(e))
         return False
-
+        
 def main():
     """Run all service tests"""
     load_dotenv()

@@ -53,12 +53,12 @@ class GeminiService:
             if api_key:
                 genai.configure(api_key=api_key)
             
-            self.model = genai.GenerativeModel('gemini-pro')
-            
+            self.model = genai.GenerativeModel('models/gemini-1.5-pro')
+
             # or use Vertex AI configuration
-            self.project_id = current_app.config.get('GCP_PROJECT_ID')
-            if self.project_id:
-                self.vertex_model = GenerativeModel("gemini-pro")
+            #self.project_id = current_app.config.get('GCP_PROJECT_ID')
+            #if self.project_id:
+            #    self.vertex_model = GenerativeModel("gemini-flash")
             
         except Exception as e:
             logger.error(f"Error initializing Gemini: {str(e)}")
