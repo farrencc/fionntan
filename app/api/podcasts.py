@@ -1,6 +1,7 @@
 # app/api/podcasts.py
 
-from flask import Blueprint, request, jsonify, current_app, send_file
+from flask import Blueprint, request, jsonify, current_app, send_file, Response
+import io
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import Schema, fields, validate, ValidationError
 import uuid
@@ -31,11 +32,12 @@ class PodcastCreateSchema(Schema):
 podcast_create_schema = PodcastCreateSchema()
 
 @podcasts_bp.route('', methods=['POST'])
-@jwt_required()
+# @jwt_required() # Comment this out for local testing
 def create_podcast():
     """Create a new podcast generation task."""
     try:
-        user_id = get_jwt_identity()
+        # user_id = get_jwt_identity() # Comment this out for local testing
+        user_id = 1  # <-- Add this temporary line
         user = User.query.get(user_id)
         
         if not user:
@@ -114,20 +116,70 @@ def create_podcast():
         return error_response(500, "Failed to create podcast")
 
 @podcasts_bp.route('/<int:podcast_id>', methods=['GET'])
-@jwt_required()
+# @jwt_required() # Comment this out only for local testing
 def get_podcast(podcast_id):
     """Get podcast details."""
     try:
-        user_id = get_jwt_identity()
+        # user_id = get_jwt_identity() # Comment this out only for local testing
+        user_id = 1  # <-- Add this temporary line
         
+    #    podcast = Podcast.query.filter_by(id=podcast_id, user_id=user_id).first()
+    #    if not podcast:
+    #        return error_response(404, "Podcast not found")
+        
+    #    return jsonify(podcast.to_dict())
+    #except Exception as e:
+    #    current_app.logger.error(f"Error retrieving podcast {podcast_id}: {str(e)}")
+    #    return error_response(500, "Failed to retrieve podcast")
+    #     podcast = Podcast.query.filter_by(id=podcast_id, user_id=user_id).first()
+    #     if not podcast:
+    #         return jsonify({'error': 'Podcast not found'}), 404
+            
+    #     if not podcast.audio_file_url:
+    #         return jsonify({'error': 'Audio file not available'}), 404
+            
+    #     # Add debug logging
+    #     current_app.logger.info(f"Attempting to download from: {podcast.audio_file_url}")
+        
+    #     try:
+    #         # Download from storage
+    #         storage_service = StorageService()
+    #         audio_data = storage_service.download_file(podcast.audio_file_url)
+            
+    #         if not audio_data:
+    #             return jsonify({'error': 'Failed to download audio file'}), 500
+                
+    #         # Return the audio file
+    #         return Response(
+    #             audio_data,
+    #             mimetype='audio/mpeg',
+    #             headers={
+    #                 'Content-Disposition': f'attachment; filename=podcast_{podcast_id}.mp3',
+    #                 'Content-Type': 'audio/mpeg'
+    #             }
+    #         )
+
+            
+    #     except Exception as e:
+    #         current_app.logger.error(f"Error downloading audio: {str(e)}")
+    #         return jsonify({'error': f'Storage error: {str(e)}'}), 500
+            
+    # except Exception as e:
+    #     current_app.logger.error(f"Error in get_podcast_audio: {str(e)}")
+    #     return jsonify({'error': 'Server error'}), 500
         podcast = Podcast.query.filter_by(id=podcast_id, user_id=user_id).first()
         if not podcast:
-            return error_response(404, "Podcast not found")
+            return jsonify({'error': 'Podcast not found'}), 404
         
         return jsonify(podcast.to_dict())
+        
     except Exception as e:
         current_app.logger.error(f"Error retrieving podcast {podcast_id}: {str(e)}")
-        return error_response(500, "Failed to retrieve podcast")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+
+
+
 
 @podcasts_bp.route('', methods=['GET'])
 @jwt_required()
@@ -161,31 +213,72 @@ def list_podcasts():
         current_app.logger.error(f"Error listing podcasts: {str(e)}")
         return error_response(500, "Failed to list podcasts")
 
+
 @podcasts_bp.route('/<int:podcast_id>/audio', methods=['GET'])
-@jwt_required()
+# @jwt_required() # Comment this out only for local testing
+# def get_podcast_audio(podcast_id):
+#     """Stream or download podcast audio."""
+#     try:
+#         # user_id = get_jwt_identity() # Comment this out only for local testing
+#         user_id = 1  # <-- Add this temporary line
+        
+    #     podcast = Podcast.query.filter_by(id=podcast_id, user_id=user_id).first()
+    #     if not podcast or not podcast.audio:
+    # #        return error_response(404, "Podcast audio not found")
+    # #    
+    #     stream = request.args.get('stream', False, type=bool)
+        
+    # #    storage_service = StorageService()
+    # #    file_path = storage_service.download_audio(podcast.audio.file_url)
+        
+    # #    return send_file(
+    # #        file_path,
+    # #        mimetype='audio/mpeg',
+    # #        as_attachment=not stream,
+    # #        download_name=f"{podcast.title}.mp3"
+    # #    )
+    # #except Exception as e:
+    # #    current_app.logger.error(f"Error retrieving audio: {str(e)}", exc_info=True)
+    # #    return error_response(500, "Failed to retrieve audio")
+
 def get_podcast_audio(podcast_id):
     """Stream or download podcast audio."""
     try:
-        user_id = get_jwt_identity()
+        user_id = 1
         
         podcast = Podcast.query.filter_by(id=podcast_id, user_id=user_id).first()
         if not podcast or not podcast.audio:
-            return error_response(404, "Podcast audio not found")
+            return jsonify({'error': 'Podcast or audio not found'}), 404
+            
+        audio_file_url = podcast.audio.file_url
+        current_app.logger.info(f"Downloading from: {audio_file_url}")
         
-        stream = request.args.get('stream', False, type=bool)
-        
+        # Download from Google Cloud Storage
         storage_service = StorageService()
-        file_path = storage_service.download_audio(podcast.audio.file_url)
+        local_file_path = storage_service.download_audio(audio_file_url)
         
-        return send_file(
-            file_path,
+        # Read the file and return it
+        with open(local_file_path, 'rb') as audio_file:
+            audio_data = audio_file.read()
+        
+        # Clean up temporary file
+        import os
+        os.unlink(local_file_path)
+        
+        # Return the audio file
+        return Response(
+            audio_data,
             mimetype='audio/mpeg',
-            as_attachment=not stream,
-            download_name=f"{podcast.title}.mp3"
+            headers={
+                'Content-Disposition': f'attachment; filename=podcast_{podcast_id}.mp3',
+                'Content-Length': str(len(audio_data))
+            }
         )
+            
     except Exception as e:
-        current_app.logger.error(f"Error retrieving audio: {str(e)}", exc_info=True)
-        return error_response(500, "Failed to retrieve audio")
+        current_app.logger.error(f"Error downloading audio: {str(e)}")
+        return jsonify({'error': f'Download error: {str(e)}'}), 500
+        
 
 @podcasts_bp.route('/<int:podcast_id>/regenerate-audio', methods=['POST'])
 @jwt_required()

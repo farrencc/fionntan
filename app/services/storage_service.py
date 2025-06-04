@@ -51,11 +51,41 @@ class StorageService:
             logger.error(f"Error uploading audio: {str(e)}")
             raise 
 
+
+    # def download_audio(self, file_url: str) -> str:
+    #     """Download audio file and return local path."""
+    #     try:
+    #         # Extract blob name from URL
+    #         blob_name = self._extract_blob_name(file_url)
+            
+    #         if not blob_name:
+    #             raise ValueError("Invalid file URL")
+            
+    #         # Download to temporary file
+    #         blob = self.bucket.blob(blob_name)
+            
+    #         # Create temporary file
+    #         fd, temp_path = tempfile.mkstemp(suffix='.mp3')
+    #         os.close(fd)
+            
+    #         # Download file
+    #         blob.download_to_filename(temp_path)
+            
+    #         return temp_path
+            
+    #     except Exception as e:
+    #         logger.error(f"Error downloading audio: {str(e)}")
+    #         raise
+
     def download_audio(self, file_url: str) -> str:
         """Download audio file and return local path."""
         try:
-            # Extract blob name from URL
-            blob_name = self._extract_blob_name(file_url)
+            # Extract blob name from gs:// URL
+            if file_url.startswith('gs://'):
+                # Remove gs://bucket_name/ to get just the blob path
+                blob_name = file_url.replace(f'gs://{self.bucket_name}/', '')
+            else:
+                blob_name = self._extract_blob_name(file_url)
             
             if not blob_name:
                 raise ValueError("Invalid file URL")
@@ -64,6 +94,7 @@ class StorageService:
             blob = self.bucket.blob(blob_name)
             
             # Create temporary file
+            import tempfile
             fd, temp_path = tempfile.mkstemp(suffix='.mp3')
             os.close(fd)
             

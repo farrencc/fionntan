@@ -53,13 +53,31 @@ def generate_podcast_script(self, task_id, podcast_id, use_preferences=True, pap
                 sort_by_preference=user.preferences.sort_by
             )
         elif paper_ids:
-            temp_papers_list = []
-            for paper_id_val in paper_ids:
+           temp_papers_list = []
+           for paper_id_val in paper_ids:
                 paper = arxiv_service.get_paper_by_id(paper_id_val)
                 if paper:
                     temp_papers_list.append(paper)
-            if temp_papers_list:
-                 fetched_papers_data = (temp_papers_list, len(temp_papers_list))
+
+        # elif paper_ids:
+        #     temp_papers_list = []
+        #     for paper_id_val in paper_ids:
+        #     # TEMPORARY MOCK DATA FOR POC TESTING
+        #         mock_paper = {
+        #         'id': paper_id_val,
+        #         'title': f'Advances in Machine Learning: {paper_id_val}',
+        #         'abstract': f'This paper presents novel approaches to machine learning and artificial intelligence. We introduce new methods for {paper_id_val} that achieve state-of-the-art performance on benchmark datasets. Our approach demonstrates significant improvements in both accuracy and computational efficiency compared to existing methods.',
+        #         'authors': ['Dr. Sarah Chen', 'Prof. Michael Rodriguez'],
+        #         'categories': ['cs.AI', 'cs.LG'],
+        #         'published': '2024-01-15',
+        #         'updated': '2024-01-20',
+        #         'url': f'https://arxiv.org/abs/{paper_id_val}',
+        #         'comment': 'Submitted to ICML 2024',
+        #         'primary_category': 'cs.AI'
+        #         }
+        #         temp_papers_list.append(mock_paper)
+                if temp_papers_list:
+                    fetched_papers_data = (temp_papers_list, len(temp_papers_list))
         else:
             raise Exception("No paper source defined: use_preferences or paper_ids required.")
 
