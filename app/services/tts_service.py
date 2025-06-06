@@ -14,20 +14,19 @@ logger = logging.getLogger(__name__)
 
 class TTSService:
     """Service for text-to-speech conversion using Google Cloud TTS."""
-    
-    # Voice configurations
+
     VOICE_PROFILES = {
         "alex": {
-            "name": "en-US-Neural2-D",
+            "name": "en-US-Chirp3-HD-Algenib", # Your chosen voice for Alex
             "gender": "MALE",
-            "speaking_rate": 1.05,
-            "pitch": 0.0
+            "speaking_rate": 1.05,  # Start with default and adjust if needed
+            "pitch": 0.0          # Start with default and adjust if needed
         },
         "jordan": {
-            "name": "en-US-Neural2-A",  
-            "gender": "MALE",
-            "speaking_rate": 0.95,
-            "pitch": -1.0
+            "name": "en-US-Chirp3-HD-Aoede",   # Your chosen voice for Jordan
+            "gender": "FEMALE",               # Updated to FEMALE
+            "speaking_rate": 1.0,  # Start with default and adjust if needed
+            "pitch": 0.0          # Start with default and adjust if needed
         }
     }
     
