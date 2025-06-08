@@ -107,10 +107,9 @@ class ArxivService:
         max_results: int = 10,
         page: int = 1,
         days_back: int = 30,
-        sort_by_preference: str = "relevance",
-        _retry_count: int = 0
+        sort_by_preference: str = "relevance"
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Search ArXiv papers with filters and rate limit handling."""
+        """Search ArXiv papers with filters and rate limit/connection error handling."""
         query = self._build_search_query(topics, categories, authors, days_back)
 
         if sort_by_preference == "lastUpdatedDate":
@@ -129,39 +128,21 @@ class ArxivService:
             sort_order=arxiv.SortOrder.Descending
         )
 
-        try:
+        def _fetch():
             results_iterable = self.client.results(search)
             results_list = list(results_iterable)
             papers = [self._process_paper(result) for result in results_list]
             total = len(papers)
             return papers, total
-        except urllib.error.HTTPError as e:
-            logger.error(f"HTTP error during search_papers. URL: {getattr(e, 'url', 'N/A')}, Code: {e.code}, Message: {e.msg}")
-            if e.code == 429:
-                if _retry_count >= self.rate_limit_max_retries_internal:
-                    logger.error("Max retries for search_papers reached after rate limiting. Raising.")
-                    raise
-                logger.warning("Rate limit (429) on search_papers. Attempting to handle and retry.")
-                try:
-                    self._handle_rate_limit_internally()
-                    logger.info("Retrying search_papers call after successful rate limit handling.")
-                    return self.search_papers(
-                        topics=topics, categories=categories, authors=authors,
-                        max_results=max_results, page=page, days_back=days_back,
-                        sort_by_preference=sort_by_preference,
-                        _retry_count=_retry_count + 1
-                    )
-                except urllib.error.HTTPError as e_handle:
-                     logger.error(f"Failed to handle rate limit; _handle_rate_limit_internally also failed: {e_handle}")
-                     raise e_handle
-            else:
-                raise
+
+        try:
+            return self._retry_with_backoff(_fetch)
         except Exception as e:
-            logger.error(f"Unexpected error in search_papers: {str(e)}")
+            logger.error(f"Failed to search ArXiv after multiple retries: {str(e)}")
             raise
 
 
-    def get_paper_by_id(self, paper_id: str, _retry_count: int = 0) -> Optional[Dict[str, Any]]:
+    def get_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """Get specific paper by ID with improved error handling."""
         def _fetch_paper():
             search = arxiv.Search(id_list=[paper_id])
@@ -176,50 +157,33 @@ class ArxivService:
         except Exception as e:
             logger.error(f"Error retrieving paper {paper_id}: {str(e)}")
             return None  # Return None instead of raising to continue with other papers
-        # try:
-        #     search = arxiv.Search(id_list=[paper_id])
-        #     results_iterable = self.client.results(search)
-        #     results_list = list(results_iterable)
-        #     if results_list:
-        #         return self._process_paper(results_list[0])
-        #     return None
-        # except urllib.error.HTTPError as e:
-        #     logger.error(f"HTTP error in get_paper_by_id({paper_id}). Code: {e.code}, Message: {e.msg}")
-        #     if e.code == 429:
-        #         if _retry_count >= self.rate_limit_max_retries_internal:
-        #             logger.error(f"Max retries for get_paper_by_id({paper_id}) reached. Raising.")
-        #             raise
-        #         logger.warning(f"Rate limit (429) for get_paper_by_id({paper_id}). Handling and retrying.")
-        #         try:
-        #             self._handle_rate_limit_internally()
-        #             logger.info(f"Retrying get_paper_by_id({paper_id}) call after successful rate limit handling.")
-        #             return self.get_paper_by_id(paper_id, _retry_count=_retry_count + 1)
-        #         except urllib.error.HTTPError as e_handle:
-        #              logger.error(f"Failed to handle rate limit for get_paper_by_id; _handle_rate_limit_internally also failed: {e_handle}")
-        #              raise e_handle
-        #     else:
-        #         raise
-        # except Exception as e:
-        #     logger.error(f"Error retrieving paper {paper_id}: {str(e)}")
-        #     raise
 
     def _retry_with_backoff(self, func, max_retries=3):
         """Retry function with exponential backoff for connection errors."""
         for attempt in range(max_retries):
             try:
                 return func()
-            except (ConnectionResetError, urllib.error.URLError, TimeoutError) as e:
+            except (ConnectionResetError, urllib.error.URLError, TimeoutError, arxiv.HTTPError) as e:
+                # Specific handling for Arxiv's 429 rate limit error
+                is_rate_limit = isinstance(e, arxiv.HTTPError) and e.status == 429
+                
+                # For non-rate-limit HTTP errors, don't retry.
+                if isinstance(e, arxiv.HTTPError) and not is_rate_limit:
+                    logger.error(f"Non-retriable HTTPError: {e}")
+                    raise e
+
                 if attempt == max_retries - 1:  # Last attempt
                     logger.error(f"Max retries reached for ArXiv request: {e}")
                     raise
                 
                 # Exponential backoff with jitter
-                delay = (2 ** attempt) + random.uniform(0, 1)
+                delay = (self.rate_limit_base_delay * (2 ** attempt)) + random.uniform(0, 0.5)
                 logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries}): {e}")
                 logger.info(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
             except Exception as e:
-                # Don't retry for other types of errors
+                # Don't retry for other types of errors (e.g., programming errors)
+                logger.error(f"An unexpected, non-retriable error occurred: {e}")
                 raise
 
     def _process_paper(self, paper) -> Dict[str, Any]:
@@ -241,6 +205,3 @@ class ArxivService:
         except Exception as e:
             logger.error(f"Error processing paper {getattr(paper, 'entry_id', 'UNKNOWN_ID')}: {str(e)}")
             raise
-
-
-
