@@ -16,7 +16,7 @@ Authlib==1.2.0
 PyJWT==2.8.0
 
 # API and web
-requests==2.30.0
+requests==2.31.0
 Werkzeug==2.3.4
 marshmallow==3.20.2
 
@@ -25,7 +25,7 @@ celery==5.3.6
 flower==2.0.1
 
 # ArXiv integration
-arxiv==1.4.7
+arxiv==2.1.0
 
 # Google Cloud services
 google-cloud-texttospeech==2.15.0
