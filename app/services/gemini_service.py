@@ -42,26 +42,28 @@ class GeminiService:
     }
     
     def __init__(self):
-        """Initialize Gemini service."""
+        """Initialize Gemini service using Vertex AI."""
         try:
-            # Configure API key
-            if hasattr(current_app, 'config'):
-                api_key = current_app.config.get('GEMINI_API_KEY')
-            else:
-                api_key = os.environ.get('GEMINI_API_KEY')
-            
-            if api_key:
-                genai.configure(api_key=api_key)
-            
-            self.model = genai.GenerativeModel('models/gemini-1.5-pro')
+            import vertexai
+            from vertexai.generative_models import GenerativeModel
 
-            # or use Vertex AI configuration
-            #self.project_id = current_app.config.get('GCP_PROJECT_ID')
-            #if self.project_id:
-            #    self.vertex_model = GenerativeModel("gemini-flash")
-            
+            project_id = current_app.config.get('GCP_PROJECT_ID')
+            location = "us-central1"  # A common, stable region for these models
+
+            if not project_id:
+                raise ValueError("GCP_PROJECT_ID is not set in the configuration.")
+
+            # Initialize Vertex AI with your project and location
+            vertexai.init(project=project_id, location=location)
+
+            # Use a stable, widely available model on Vertex AI
+            # Do NOT include "models/" here when using Vertex AI initialization
+            self.model = GenerativeModel("gemini-2.5-pro")
+
+            logger.info(f"Successfully initialized Gemini service via Vertex AI for project '{project_id}'")
+
         except Exception as e:
-            logger.error(f"Error initializing Gemini: {str(e)}")
+            logger.error(f"Error initializing Gemini via Vertex AI: {str(e)}")
             raise
     
     def generate_script(
