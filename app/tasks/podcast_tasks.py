@@ -170,6 +170,10 @@ def generate_podcast_audio(self, task_id, podcast_id):
         if not podcast_obj or not podcast_obj.script:
             raise Exception(f"Podcast (ID: {podcast_id}) or its script not found for audio generation.")
 
+        # ==> ADD THIS LINE TO INSPECT THE SCRIPT <==
+        logger.info(f"AUDIO_TASK: Received script content to process: {podcast_obj.script.script_content}")
+
+
         if hasattr(self, 'update_state'):
             self.update_state(state='PROGRESS', meta={'progress': 10})
 
@@ -178,6 +182,12 @@ def generate_podcast_audio(self, task_id, podcast_id):
             script_content=podcast_obj.script.script_content,
             voice_preference='mixed'
         )
+        
+        # ==> ADD THIS LINE TO CHECK THE AUDIO DATA SIZE <==
+        logger.info(f"AUDIO_TASK: Generated audio data size: {len(audio_file_bytes)} bytes")
+
+        if len(audio_file_bytes) < 1000:
+            raise ValueError("Generated audio is too small. Check TTS service for errors.")
 
         if hasattr(self, 'update_state'):
             self.update_state(state='PROGRESS', meta={'progress': 60})

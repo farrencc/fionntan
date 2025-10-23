@@ -4,6 +4,7 @@ import os
 import io
 import logging
 import tempfile
+import re  # <-- Import the regular expression module
 from typing import Dict, Any, Optional
 
 from google.cloud import texttospeech
@@ -17,16 +18,16 @@ class TTSService:
 
     VOICE_PROFILES = {
         "alex": {
-            "name": "en-US-Chirp3-HD-Algenib", # Your chosen voice for Alex
+            "name": "en-US-Chirp3-HD-Algenib",
             "gender": "MALE",
-            "speaking_rate": 1.05,  # Start with default and adjust if needed
-            "pitch": 0.0          # Start with default and adjust if needed
+            "speaking_rate": 1.05,
+            "pitch": 0.0
         },
         "jordan": {
-            "name": "en-US-Chirp3-HD-Aoede",   # Your chosen voice for Jordan
-            "gender": "FEMALE",               # Updated to FEMALE
-            "speaking_rate": 1.0,  # Start with default and adjust if needed
-            "pitch": 0.0          # Start with default and adjust if needed
+            "name": "en-US-Chirp3-HD-Aoede",
+            "gender": "FEMALE",
+            "speaking_rate": 1.0,
+            "pitch": 0.0
         }
     }
     
@@ -39,6 +40,13 @@ class TTSService:
         except Exception as e:
             logger.error(f"Error initializing TTS service: {str(e)}")
             raise
+
+    # ==> ADD THIS NEW HELPER METHOD <==
+    def _clean_text(self, text: str) -> str:
+        """Removes markdown characters for cleaner TTS output."""
+        # This regex removes *, **, _, __, and any brackets [] or parentheses ()
+        # which are often used for non-verbal cues in scripts.
+        return re.sub(r'(\*{1,2}|_{1,2}|[\[\]\(\)])', '', text).strip()
     
     def generate_audio(
         self,
@@ -47,7 +55,6 @@ class TTSService:
     ) -> bytes:
         """Generate audio from script content."""
         try:
-            # Parse script and generate audio segments
             audio_segments = []
             
             for section in script_content.get("sections", []):
@@ -58,21 +65,27 @@ class TTSService:
                     if not text:
                         continue
                     
-                    # Generate audio for this segment
-                    audio_data = self._synthesize_speech(text, speaker)
+                    # ==> ADD THIS LINE TO CLEAN THE TEXT <==
+                    cleaned_text = self._clean_text(text)
+                    
+                    # Skip if the text is empty after cleaning
+                    if not cleaned_text:
+                        continue
+
+                    # Generate audio for this segment using the cleaned text
+                    audio_data = self._synthesize_speech(cleaned_text, speaker)
                     audio_segment = AudioSegment.from_mp3(io.BytesIO(audio_data))
                     
-                    # Add segment to collection
                     audio_segments.append(audio_segment)
                     
                     # Add pause between segments
-                    pause = AudioSegment.silent(duration=500)  # 500ms pause
+                    pause = AudioSegment.silent(duration=500)
                     audio_segments.append(pause)
             
-            # Combine all segments
             if not audio_segments:
                 raise ValueError("No audio segments generated")
             
+            # Combine all segments
             combined = audio_segments[0]
             for segment in audio_segments[1:]:
                 combined += segment
@@ -91,20 +104,16 @@ class TTSService:
     def _synthesize_speech(self, text: str, speaker: str) -> bytes:
         """Synthesize speech for a specific speaker."""
         try:
-            # Get voice profile
             voice_profile = self.VOICE_PROFILES.get(speaker, self.VOICE_PROFILES["alex"])
             
-            # Prepare input
             synthesis_input = texttospeech.SynthesisInput(text=text)
             
-            # Configure voice
             voice = texttospeech.VoiceSelectionParams(
                 language_code="en-US",
                 name=voice_profile["name"],
                 ssml_gender=getattr(texttospeech.SsmlVoiceGender, voice_profile["gender"])
             )
             
-            # Configure audio
             audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.MP3,
                 speaking_rate=voice_profile["speaking_rate"],
@@ -112,7 +121,6 @@ class TTSService:
                 sample_rate_hertz=self.sample_rate
             )
             
-            # Synthesize speech
             response = self.client.synthesize_speech(
                 request={
                     "input": synthesis_input,
@@ -132,21 +140,18 @@ class TTSService:
         try:
             audio = AudioSegment.from_mp3(io.BytesIO(audio_data))
             return int(audio.duration_seconds)
-            
         except Exception as e:
             logger.error(f"Error getting audio duration: {str(e)}")
             return None
     
     def apply_ssml_enhancements(self, text: str) -> str:
         """Apply SSML enhancements to text."""
-        # Add SSML tags for better speech
         ssml = f"""<speak>
             <prosody rate="medium" pitch="default">
                 {text}
             </prosody>
         </speak>"""
         
-        # Apply specific enhancements
         ssml = ssml.replace("ArXiv", '<say-as interpret-as="spell-out">ArXiv</say-as>')
         ssml = ssml.replace("AI", '<say-as interpret-as="spell-out">A I</say-as>')
         ssml = ssml.replace("ML", '<say-as interpret-as="spell-out">M L</say-as>')
