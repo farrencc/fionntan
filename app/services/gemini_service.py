@@ -3,6 +3,7 @@
 import os
 import json
 import logging
+import re  # <-- Import the regular expression module
 from typing import List, Dict, Any, Optional
 
 # Try different import methods
@@ -233,7 +234,7 @@ REQUIREMENTS:
 2. Match language to the {technical_level} technical level
 3. Include questions, insights, and appropriate humor
 4. Create smooth transitions between papers
-5. Format for audio production
+5. Format for audio production. CRITICAL: Start each line of dialogue with the host's name in ALL CAPS followed by a colon (e.g., "ALEX:").
 
 OUTPUT FORMAT:
 # {episode_title}
@@ -255,11 +256,13 @@ Generate the script now:"""
         
         return prompt
     
+    # ==> THIS IS THE CORRECTED PARSING FUNCTION <==
     def _format_script(self, script_text: str, episode_title: str) -> Dict[str, Any]:
         """Parse and format script into structured data."""
         sections = []
-        current_section = {"title": "", "segments": []}
-        current_speaker = None
+        current_section = {"title": "Introduction", "segments": []}
+        # Get host names in uppercase for matching
+        known_hosts_upper = [host.upper() for host in self.HOST_PROFILES.keys()]
         
         lines = script_text.split('\n')
         for line in lines:
@@ -268,35 +271,44 @@ Generate the script now:"""
             if not line:
                 continue
             
-            # Check for section headers
+            # Check for episode title
             if line.startswith('# '):
+                # Use the title from the script if we don't have one
+                if not episode_title:
+                    episode_title = line[2:].strip()
                 continue
             
+            # Check for section headers
             if line.startswith('## '):
-                # Save previous section if it has content
-                if current_section["title"] and current_section["segments"]:
+                if current_section.get("segments"):
                     sections.append(current_section)
-                
-                # Start new section
-                current_section = {
-                    "title": line[3:].strip(),
-                    "segments": []
-                }
+                current_section = {"title": line[3:].strip(), "segments": []}
                 continue
             
-            # Check for speaker lines
-            if ':' in line:
-                parts = line.split(':', 1)
-                if len(parts) == 2 and parts[0].isupper():
-                    speaker = parts[0].lower()
-                    dialogue = parts[1].strip()
-                    
+            # Check for speaker lines using regex for more flexibility
+            # This matches "ALEX:", "Alex:", "Jordan:", etc. and captures the speaker name and dialogue
+            speaker_match = re.match(r'^([A-Za-z]+):\s*(.*)$', line)
+            
+            if speaker_match:
+                speaker_candidate = speaker_match.group(1).strip().upper()
+                dialogue = speaker_match.group(2).strip()
+
+                # Check if the speaker is one of our known hosts
+                if speaker_candidate in known_hosts_upper:
+                    speaker_key = speaker_candidate.lower() # 'alex' or 'jordan'
                     current_section["segments"].append({
-                        "speaker": speaker,
+                        "speaker": speaker_key,
                         "text": dialogue
                     })
+                    continue # Move to the next line
+
+            # Handle continuation lines
+            # If the line doesn't start with a header or a speaker,
+            # and we have segments, append it to the previous segment's text.
+            if current_section["segments"] and not line.startswith('##'):
+                current_section["segments"][-1]["text"] += " " + line
         
-        # Add last section
+        # Add the last section
         if current_section["title"] and current_section["segments"]:
             sections.append(current_section)
         
